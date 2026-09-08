@@ -15,7 +15,6 @@ Requirements: Flutter 3.24+ (Dart 3.3+), Android Studio (or just the Android
 SDK + a device/emulator), JDK 17.
 
 ```bash
-cd trackme
 flutter pub get
 flutter run
 ```
@@ -55,7 +54,7 @@ testing. Before publishing, add your own `signingConfig`.
 ## 2. Project structure
 
 ```
-trackme/
+trackme_modified/
 ├── pubspec.yaml
 ├── analysis_options.yaml
 ├── lib/

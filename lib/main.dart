@@ -9,6 +9,7 @@ import 'services/hive_service.dart';
 import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
+import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/goal_detail/goal_detail_screen.dart';
@@ -46,6 +47,7 @@ class _TrackMeAppState extends State<TrackMeApp> {
   late final GoalService _goalService;
   late final QuestService _questService;
   late final SettingsService _settingsService;
+  late final SupabaseService _supabaseService;
   StreamSubscription<Uri?>? _widgetClickSub;
 
   @override
@@ -54,10 +56,18 @@ class _TrackMeAppState extends State<TrackMeApp> {
     _goalService = GoalService();
     _questService = QuestService();
     _settingsService = SettingsService();
+    _supabaseService = SupabaseService();
+
+    // Initialize Supabase in background
+    _supabaseService.initSupabase();
 
     // Keep the widget username copy in sync with SettingsService.
     _goalService.setUserName(_settingsService.userName);
+    _supabaseService.updateUsername(_settingsService.userName);
+
     _settingsService.addListener(_onSettingsChanged);
+    _goalService.addListener(_onDataChanged);
+    _questService.addListener(_onDataChanged);
 
     // Tapping a goal's home-screen widget should open that goal directly.
     _handleInitialWidgetLaunch();
@@ -66,6 +76,14 @@ class _TrackMeAppState extends State<TrackMeApp> {
 
   void _onSettingsChanged() {
     _goalService.setUserName(_settingsService.userName);
+    _supabaseService.updateUsername(_settingsService.userName);
+  }
+
+  void _onDataChanged() {
+    _supabaseService.syncLocalProfileToCloud(
+      goals: _goalService.goals,
+      quests: _questService.quests,
+    );
   }
 
   Future<void> _handleInitialWidgetLaunch() async {
@@ -96,9 +114,12 @@ class _TrackMeAppState extends State<TrackMeApp> {
   void dispose() {
     _widgetClickSub?.cancel();
     _settingsService.removeListener(_onSettingsChanged);
+    _goalService.removeListener(_onDataChanged);
+    _questService.removeListener(_onDataChanged);
     _goalService.dispose();
     _questService.dispose();
     _settingsService.dispose();
+    _supabaseService.dispose();
     super.dispose();
   }
 
@@ -109,6 +130,7 @@ class _TrackMeAppState extends State<TrackMeApp> {
         ChangeNotifierProvider<GoalService>.value(value: _goalService),
         ChangeNotifierProvider<QuestService>.value(value: _questService),
         ChangeNotifierProvider<SettingsService>.value(value: _settingsService),
+        ChangeNotifierProvider<SupabaseService>.value(value: _supabaseService),
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,

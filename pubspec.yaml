@@ -46,6 +46,9 @@ dependencies:
   path_provider: ^2.1.4
   url_launcher: ^6.3.1
 
+  # Online backend database & auth
+  supabase_flutter: ^2.8.0
+
   # Backup/export: serialize all data to JSON, hand it to the OS share
   # sheet, and read it back in via a native file picker.
   # NOTE: file_picker recently removed the old `FilePicker.platform.` prefix

@@ -16,6 +16,7 @@ import '../quests/quests_screen.dart';
 import '../achievements/achievements_screen.dart';
 import '../stats/stats_screen.dart';
 import '../settings/settings_screen.dart';
+import '../social/social_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -154,6 +155,15 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         IconButton(
+          icon: const Icon(Icons.people_outline,
+              color: AppColors.textSecondary),
+          tooltip: 'Community & Teams',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SocialScreen()),
+          ),
+        ),
+        IconButton(
           icon: const Icon(Icons.emoji_events_outlined,
               color: AppColors.textSecondary),
           tooltip: 'Achievements',
@@ -286,6 +296,15 @@ Widget _BottomNav(BuildContext context) {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const QuestsScreen()),
+              ),
+            ),
+            _NavItem(
+              icon: Icons.groups_rounded,
+              label: 'Teams',
+              selected: false,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SocialScreen()),
               ),
             ),
             _NavItem(
