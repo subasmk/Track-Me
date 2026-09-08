@@ -30,13 +30,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build release split APKs
+        run: flutter build apk --release --split-per-abi
 
       # Shows up as a downloadable .zip under the finished run's "Artifacts"
-      # section — unzip it to get app-release.apk.
-      - name: Upload APK
+      # section — unzip it to get your optimized <30MB architecture APKs.
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: trackme-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: trackme-apks
+          path: build/app/outputs/flutter-apk/*.apk

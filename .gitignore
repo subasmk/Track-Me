@@ -10,6 +10,7 @@ build/
 
 # Android
 android/.gradle/
+android/.kotlin/
 android/captures/
 android/gradlew
 android/gradlew.bat
