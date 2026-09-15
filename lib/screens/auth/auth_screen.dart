@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -27,6 +28,8 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submit() async {
+    if (_isLoading) return;
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -49,15 +52,46 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_isSignUp) {
-        await supabase.signUp(email: email, password: password);
+        final res = await supabase.signUp(email: email, password: password);
+        if (mounted) {
+          if (res?.session == null && res?.user != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Check your email to verify your account.'),
+                duration: Duration(seconds: 5),
+              ),
+            );
+          } else if (res?.session != null) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SetupProfileScreen()),
+            );
+          }
+        }
       } else {
-        await supabase.signIn(email: email, password: password);
+        final res = await supabase.signIn(email: email, password: password);
+        if (mounted && res?.session != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const SetupProfileScreen()),
+          );
+        }
       }
-
+    } on AuthException catch (e) {
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SetupProfileScreen()),
+        final isRateLimit = e.statusCode == '429' ||
+            e.code == 'over_email_send_rate_limit' ||
+            e.message.toLowerCase().contains('rate limit');
+
+        final userMessage = isRateLimit
+            ? 'Too many verification emails were requested. Please wait and try again later.'
+            : e.message;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(userMessage),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } catch (e) {

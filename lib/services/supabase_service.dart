@@ -24,7 +24,6 @@ class SupabaseService extends ChangeNotifier {
   String _currentUsername = 'Learner';
   String get currentUsername => _currentUsername;
 
-  List<PublicProfile> _mockProfiles = [];
   List<String> _friendsList = [];
   List<TeamQuest> _teamQuests = [];
 
@@ -33,7 +32,6 @@ class SupabaseService extends ChangeNotifier {
 
   SupabaseService() {
     _loadLocalState();
-    _initMockData();
   }
 
   Future<void> initSupabase({String? url, String? anonKey}) async {
@@ -94,7 +92,7 @@ class SupabaseService extends ChangeNotifier {
   void _loadLocalState() {
     final box = HiveService.settingsBox;
     _currentUsername = (box.get('user_name') as String?) ?? 'Learner';
-    _friendsList = List<String>.from((box.get('friends_list') as List?) ?? ['AlexCoder', 'FitNinja']);
+    _friendsList = List<String>.from((box.get('friends_list') as List?) ?? []);
     
     final rawTeams = box.get('team_quests_json') as String?;
     if (rawTeams != null) {
@@ -102,20 +100,6 @@ class SupabaseService extends ChangeNotifier {
         final decoded = jsonDecode(rawTeams) as List;
         _teamQuests = decoded.map((e) => TeamQuest.fromJson(e as Map<String, dynamic>)).toList();
       } catch (_) {}
-    }
-
-    if (_teamQuests.isEmpty) {
-      _teamQuests = [
-        TeamQuest(
-          id: 'team_1',
-          title: '30-Day Code & Fitness Sprint',
-          emoji: '🔥',
-          description: 'Complete daily goal to maintain our 7-day team streak!',
-          memberUsernames: [_currentUsername, 'AlexCoder', 'FitNinja'],
-          teamStreak: 7,
-          completedTodayUsernames: ['AlexCoder'],
-        ),
-      ];
     }
   }
 
@@ -129,49 +113,6 @@ class SupabaseService extends ChangeNotifier {
     _currentUsername = newName;
     _saveLocalState();
     notifyListeners();
-  }
-
-  void _initMockData() {
-    _mockProfiles = [
-      PublicProfile(
-        id: 'user_alex',
-        username: 'AlexCoder',
-        level: 5,
-        xp: 450,
-        currentStreak: 14,
-        longestStreak: 21,
-        badges: ['first_step', 'streak_7', 'streak_14', 'xp_500'],
-        mainTasks: [
-          PublicTask(id: 'g1', title: 'Flutter & Dart Mastery', emoji: '💙', type: 'goal', streak: 14, dailyMinutes: 30),
-          PublicTask(id: 'q1', title: 'Daily Code Review Quest', emoji: '💻', type: 'quest', streak: 8, items: ['Read 1 PR', 'Write 50 lines', 'Refactor 1 function']),
-        ],
-      ),
-      PublicProfile(
-        id: 'user_fit',
-        username: 'FitNinja',
-        level: 8,
-        xp: 890,
-        currentStreak: 28,
-        longestStreak: 30,
-        badges: ['first_step', 'streak_7', 'streak_14', 'streak_30', 'notes_5'],
-        mainTasks: [
-          PublicTask(id: 'g2', title: 'Morning Calisthenics', emoji: '⚡', type: 'goal', streak: 28, dailyMinutes: 20),
-          PublicTask(id: 'q2', title: 'Full Body Workout Quest', emoji: '🏋️', type: 'quest', streak: 15, items: ['30 Pushups', '20 Squats', '1 min Plank']),
-        ],
-      ),
-      PublicProfile(
-        id: 'user_mind',
-        username: 'ZenMaster',
-        level: 3,
-        xp: 220,
-        currentStreak: 5,
-        longestStreak: 12,
-        badges: ['first_step', 'streak_7'],
-        mainTasks: [
-          PublicTask(id: 'g3', title: 'Daily Mindfulness & Meditation', emoji: '🧘', type: 'goal', streak: 5, dailyMinutes: 15),
-        ],
-      ),
-    ];
   }
 
   Future<void> syncLocalProfileToCloud({
@@ -205,8 +146,10 @@ class SupabaseService extends ChangeNotifier {
       ));
     }
 
+    final userId = currentUser?.id ?? 'user_${_currentUsername.toLowerCase().replaceAll(' ', '_')}';
+
     final profile = PublicProfile(
-      id: 'local_user',
+      id: userId,
       username: _currentUsername,
       level: level,
       xp: totalXp,
@@ -216,15 +159,7 @@ class SupabaseService extends ChangeNotifier {
       mainTasks: mainTasks,
     );
 
-    // Update in mock list if offline or Supabase table if online
-    final index = _mockProfiles.indexWhere((p) => p.username.toLowerCase() == _currentUsername.toLowerCase());
-    if (index >= 0) {
-      _mockProfiles[index] = profile;
-    } else {
-      _mockProfiles.add(profile);
-    }
-
-    if (_isInitialized && !defaultUrl.contains('YOUR_SUPABASE_PROJECT')) {
+    if (_isInitialized) {
       try {
         await Supabase.instance.client.from('profiles').upsert(profile.toJson());
       } catch (e) {
@@ -236,19 +171,28 @@ class SupabaseService extends ChangeNotifier {
 
   Future<List<PublicProfile>> searchProfiles(String query) async {
     final q = query.trim().toLowerCase();
-    if (q.isEmpty) return _mockProfiles;
 
-    if (_isInitialized && !defaultUrl.contains('YOUR_SUPABASE_PROJECT')) {
+    if (_isInitialized) {
       try {
-        final res = await Supabase.instance.client
-            .from('profiles')
-            .select()
-            .ilike('username', '%$q%');
-        return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
-      } catch (_) {}
+        if (q.isEmpty) {
+          final res = await Supabase.instance.client
+              .from('profiles')
+              .select()
+              .limit(20);
+          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
+        } else {
+          final res = await Supabase.instance.client
+              .from('profiles')
+              .select()
+              .ilike('username', '%$q%');
+          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
+        }
+      } catch (e) {
+        debugPrint('Supabase search profiles error: $e');
+      }
     }
 
-    return _mockProfiles.where((p) => p.username.toLowerCase().contains(q)).toList();
+    return [];
   }
 
   Future<PublicProfile?> getProfileByUsername(String username) async {
