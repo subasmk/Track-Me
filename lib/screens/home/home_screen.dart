@@ -14,10 +14,10 @@ import '../goal_detail/goal_detail_screen.dart';
 import '../notes/notes_screen.dart';
 import '../quests/quests_screen.dart';
 import '../achievements/achievements_screen.dart';
-import '../stats/stats_screen.dart';
 import '../settings/settings_screen.dart';
-import '../social/social_screen.dart';
+import '../social/search_friends_screen.dart';
 import '../profile/profile_screen.dart';
+import '../quests/add_quest_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -120,14 +120,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const AddGoalScreen()),
-        ),
-        backgroundColor: AppColors.purpleMid,
-        child: const Icon(Icons.add, color: AppColors.textPrimary),
-      ),
       bottomNavigationBar: _BottomNav(context),
     );
   }
@@ -155,37 +147,19 @@ class _TopBar extends StatelessWidget {
             ],
           ),
         ),
-        GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ProfileScreen()),
-          ),
-          child: CircleAvatar(
-            radius: 18,
-            backgroundColor: AppColors.purpleMid,
-            child: Text(
-              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14),
-            ),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
         IconButton(
-          icon: const Icon(Icons.people_outline,
-              color: AppColors.textSecondary),
-          tooltip: 'Community & Teams',
+          icon: const Icon(Icons.search_rounded,
+              color: AppColors.purpleLight),
+          tooltip: 'Search & Friends',
           onPressed: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const SocialScreen()),
+            MaterialPageRoute(builder: (_) => const SearchFriendsScreen()),
           ),
         ),
         IconButton(
           icon: const Icon(Icons.emoji_events_outlined,
               color: AppColors.textSecondary),
-          tooltip: 'Achievements',
+          tooltip: 'Badges',
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AchievementsScreen()),
@@ -308,6 +282,19 @@ Widget _BottomNav(BuildContext context) {
                 MaterialPageRoute(builder: (_) => const NotesScreen()),
               ),
             ),
+            // Center + Create Button
+            GestureDetector(
+              onTap: () => _showCreateModal(context),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: AppColors.purpleMid,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+              ),
+            ),
             _NavItem(
               icon: Icons.shield_rounded,
               label: 'Quests',
@@ -315,33 +302,6 @@ Widget _BottomNav(BuildContext context) {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const QuestsScreen()),
-              ),
-            ),
-            _NavItem(
-              icon: Icons.groups_rounded,
-              label: 'Teams',
-              selected: false,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SocialScreen()),
-              ),
-            ),
-            _NavItem(
-              icon: Icons.emoji_events_rounded,
-              label: 'Badges',
-              selected: false,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AchievementsScreen()),
-              ),
-            ),
-            _NavItem(
-              icon: Icons.bar_chart_rounded,
-              label: 'Stats',
-              selected: false,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const StatsScreen()),
               ),
             ),
             _NavItem(
@@ -355,6 +315,57 @@ Widget _BottomNav(BuildContext context) {
             ),
           ],
         ),
+      ),
+    ),
+  );
+}
+
+void _showCreateModal(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Create New Task', style: AppTextStyles.title),
+          const SizedBox(height: AppSpacing.md),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: AppColors.purpleMid,
+              child: Icon(Icons.track_changes_rounded, color: Colors.white),
+            ),
+            title: const Text('Add Single Goal', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('Create a daily habit with minutes target'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AddGoalScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Colors.orangeAccent,
+              child: Icon(Icons.shield_rounded, color: Colors.white),
+            ),
+            title: const Text('Add Structured Quest', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('Create a quest with multiple sub-goals'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AddQuestScreen()),
+              );
+            },
+          ),
+        ],
       ),
     ),
   );

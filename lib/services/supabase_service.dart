@@ -12,11 +12,14 @@ import 'goal_service.dart';
 import 'quest_service.dart';
 
 class SupabaseService extends ChangeNotifier {
-  static const String defaultUrl = 'https://sb_publishable_vOrxzXaw9wbIFzqd81ETfQ_s3-8l4nN.supabase.co';
-  static const String defaultAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
+  static const String defaultUrl = 'https://ceckjlbfwwjdhuffsmta.supabase.co';
+  static const String defaultAnonKey = 'sb_publishable_jQ20Rs4lNnGCxP0xMuRcpg_pLPDH69e';
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
+
+  User? get currentUser => _isInitialized ? Supabase.instance.client.auth.currentUser : null;
+  bool get isLoggedIn => currentUser != null;
 
   String _currentUsername = 'Learner';
   String get currentUsername => _currentUsername;
@@ -51,11 +54,41 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
-  Future<void> saveSupabaseCredentials(String url, String key) async {
-    final box = HiveService.settingsBox;
-    await box.put('supabase_url', url.trim());
-    await box.put('supabase_key', key.trim());
-    await initSupabase(url: url.trim(), anonKey: key.trim());
+  Future<AuthResponse?> signUp({required String email, required String password}) async {
+    if (!_isInitialized) return null;
+    try {
+      final res = await Supabase.instance.client.auth.signUp(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      notifyListeners();
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<AuthResponse?> signIn({required String email, required String password}) async {
+    if (!_isInitialized) return null;
+    try {
+      final res = await Supabase.instance.client.auth.signInWithPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      notifyListeners();
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> signOut() async {
+    if (_isInitialized) {
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (_) {}
+    }
+    notifyListeners();
   }
 
   void _loadLocalState() {

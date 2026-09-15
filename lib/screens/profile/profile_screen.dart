@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/goal_service.dart';
 import '../../services/quest_service.dart';
 import '../../services/settings_service.dart';
@@ -17,6 +19,7 @@ class ProfileScreen extends StatelessWidget {
     final settings = context.watch<SettingsService>();
     final goalService = context.watch<GoalService>();
     final questService = context.watch<QuestService>();
+    final supabase = context.watch<SupabaseService>();
     final goals = goalService.goals;
     final quests = questService.quests;
 
@@ -29,17 +32,19 @@ class ProfileScreen extends StatelessWidget {
     final totalXp = goals.fold<int>(0, (prev, g) => prev + g.xp);
     final level = (totalXp / 100).floor() + 1;
     final levelProgress = (totalXp % 100) / 100.0;
+    final totalTasks = goals.length + quests.length;
+    final totalFriends = supabase.friendsList.length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: Text('@${settings.userName.toLowerCase().replaceAll(' ', '')}'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit Username',
-            onPressed: () => _showLoginUsernameDialog(context, settings),
+            icon: const Icon(Icons.edit_note_rounded),
+            tooltip: 'Edit Profile',
+            onPressed: () => _showEditProfileDialog(context, settings),
           ),
         ],
       ),
@@ -49,131 +54,123 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hero Profile Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.purpleMid.withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Stack(
+              // Instagram-style Profile Header Row
+              Row(
+                children: [
+                  // Profile Photo Avatar
+                  GestureDetector(
+                    onTap: () => _pickProfileImage(context, settings),
+                    child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
                         CircleAvatar(
-                          radius: 40,
-                          backgroundColor: Colors.white24,
-                          child: Text(
-                            settings.userName.isNotEmpty
-                                ? settings.userName[0].toUpperCase()
-                                : 'U',
-                            style: const TextStyle(
-                              fontSize: 38,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                          radius: 42,
+                          backgroundColor: AppColors.purpleMid,
+                          backgroundImage: settings.photoPath != null
+                              ? FileImage(File(settings.photoPath!))
+                              : null,
+                          child: settings.photoPath == null
+                              ? Text(
+                                  settings.userName.isNotEmpty
+                                      ? settings.userName[0].toUpperCase()
+                                      : 'U',
+                                  style: const TextStyle(
+                                    fontSize: 38,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : null,
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.orangeAccent,
-                            borderRadius: BorderRadius.circular(10),
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: AppColors.purpleLight,
+                            shape: BoxShape.circle,
                           ),
-                          child: Text(
-                            'Lvl $level',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
+                          child: const Icon(Icons.camera_alt,
+                              size: 14, color: Colors.white),
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      settings.userName,
-                      style: AppTextStyles.title.copyWith(fontSize: 22),
-                    ),
-                    Text(
-                      '@${settings.userName.toLowerCase().replaceAll(' ', '')}',
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 13),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
 
-                    // Level XP Progress
-                    Row(
+                  // Stats Row (Tasks, Friends, Streaks, XP)
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        Text('Level $level',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white)),
-                        const Spacer(),
-                        Text('$totalXp XP',
-                            style: const TextStyle(
-                                fontSize: 12, color: AppColors.textSecondary)),
+                        _InstaStatItem(count: '$totalTasks', label: 'Tasks'),
+                        _InstaStatItem(count: '$totalFriends', label: 'Friends'),
+                        _InstaStatItem(count: '🔥 $overallStreak', label: 'Streak'),
+                        _InstaStatItem(count: 'Lvl $level', label: '$totalXp XP'),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: levelProgress,
-                        minHeight: 8,
-                        backgroundColor: Colors.white12,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                            AppColors.flameYellow),
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Stats Row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _StatBadge(
-                            label: 'Current Streak', value: '🔥 $overallStreak d'),
-                        _StatBadge(
-                            label: 'Best Streak', value: '🏆 $longestStreak d'),
-                        _StatBadge(
-                            label: 'Active Tasks',
-                            value: '🎯 ${goals.length + quests.length}'),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
 
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.sm),
 
-              // Account & Username Setup Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.surface,
-                    foregroundColor: AppColors.purpleLight,
-                    side: const BorderSide(color: AppColors.surfaceBorder),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  icon: const Icon(Icons.person_pin_rounded),
-                  label: const Text('Change Username / Account'),
-                  onPressed: () => _showLoginUsernameDialog(context, settings),
+              // Name, Handle & Bio Block
+              Text(
+                settings.fullName,
+                style: AppTextStyles.title.copyWith(fontSize: 18),
+              ),
+              Text(
+                '@${settings.userName.toLowerCase().replaceAll(' ', '')}',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                settings.bio,
+                style: AppTextStyles.body.copyWith(fontSize: 14),
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              // Level Progress Bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: levelProgress,
+                  minHeight: 8,
+                  backgroundColor: AppColors.surfaceBorder,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppColors.flameYellow),
                 ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Text('Level $level',
+                      style: AppTextStyles.caption
+                          .copyWith(fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Text('$totalXp XP', style: AppTextStyles.caption),
+                ],
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              // Action Buttons Row (Edit Profile + Share Profile)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: const BorderSide(color: AppColors.surfaceBorder),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      label: const Text('Edit Profile'),
+                      onPressed: () => _showEditProfileDialog(context, settings),
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: AppSpacing.lg),
@@ -182,7 +179,7 @@ class ProfileScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Unlocked Badges',
+                  Text('Badges & Trophies',
                       style: Theme.of(context)
                           .textTheme
                           .titleMedium
@@ -225,8 +222,8 @@ class ProfileScreen extends StatelessWidget {
 
               const SizedBox(height: AppSpacing.lg),
 
-              // My Tasks Overview
-              Text('My Active Tasks',
+              // Active Tasks Grid / List Overview
+              Text('My Active Tasks ($totalTasks)',
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium
@@ -292,33 +289,57 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  static void _showLoginUsernameDialog(
+  static Future<void> _pickProfileImage(
+      BuildContext context, SettingsService settings) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      await settings.updateProfile(
+        fullName: settings.fullName,
+        bio: settings.bio,
+        photoPath: picked.path,
+      );
+    }
+  }
+
+  static void _showEditProfileDialog(
       BuildContext context, SettingsService settings) {
-    final controller = TextEditingController(text: settings.userName);
+    final nameCtrl = TextEditingController(text: settings.fullName);
+    final usernameCtrl = TextEditingController(text: settings.userName);
+    final bioCtrl = TextEditingController(text: settings.bio);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Set Your Username'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your username so friends can search your public profile, copy your tasks, and collaborate on team streaks!',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: AppTextStyles.body,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                prefixIcon: Icon(Icons.alternate_email),
+        title: const Text('Edit Profile'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: AppTextStyles.body,
+                decoration: const InputDecoration(labelText: 'Full Name'),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              TextField(
+                controller: usernameCtrl,
+                style: AppTextStyles.body,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: bioCtrl,
+                style: AppTextStyles.body,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Bio'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -331,20 +352,21 @@ class ProfileScreen extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                await settings.setUserName(newName);
+              final newUsername = usernameCtrl.text.trim();
+              if (newUsername.isNotEmpty) {
+                await settings.setUserName(newUsername);
+                await settings.updateProfile(
+                  fullName: nameCtrl.text.trim(),
+                  bio: bioCtrl.text.trim(),
+                );
                 if (context.mounted) {
-                  context.read<GoalService>().setUserName(newName);
-                  context.read<SupabaseService>().updateUsername(newName);
+                  context.read<GoalService>().setUserName(newUsername);
+                  context.read<SupabaseService>().updateUsername(newUsername);
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Logged in as @$newName! 🎉')),
-                  );
                 }
               }
             },
-            child: const Text('Save Username'),
+            child: const Text('Save Profile'),
           ),
         ],
       ),
@@ -352,24 +374,31 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _StatBadge extends StatelessWidget {
+class _InstaStatItem extends StatelessWidget {
+  final String count;
   final String label;
-  final String value;
-  const _StatBadge({required this.label, required this.value});
+  const _InstaStatItem({required this.count, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
+        Text(
+          count,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label,
-            style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+          ),
+        ),
       ],
     );
   }
