@@ -4,8 +4,6 @@ import '../../models/public_profile.dart';
 import '../../services/supabase_service.dart';
 import '../../services/goal_service.dart';
 import '../../services/quest_service.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_spacing.dart';
 
 class PublicProfileScreen extends StatelessWidget {
   final PublicProfile profile;
@@ -18,14 +16,32 @@ class PublicProfileScreen extends StatelessWidget {
     final isFriend = supabase.friendsList.contains(profile.username);
     final isSelf = supabase.currentUsername.toLowerCase() == profile.username.toLowerCase();
 
+    const bgDark = Color(0xFF070D18);
+    const cardColor = Color(0xFF101B2E);
+    const borderColor = Color(0xFF1A2A44);
+    const accentBlue = Color(0xFF2E86DE);
+    const fireOrange = Color(0xFFFF6A00);
+    const textMuted = Color(0xFF8B9CB3);
+
+    final levelProgress = (profile.xp % 100) / 100.0;
+
     return Scaffold(
+      backgroundColor: bgDark,
       appBar: AppBar(
-        title: Text('@${profile.username}'),
-        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          '@${profile.username.toLowerCase().replaceAll(' ', '')}',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         actions: [
           if (!isSelf)
             IconButton(
-              icon: Icon(isFriend ? Icons.person_remove : Icons.person_add),
+              icon: Icon(isFriend ? Icons.person_remove : Icons.person_add, color: Colors.white),
               tooltip: isFriend ? 'Remove Friend' : 'Add Friend',
               onPressed: () {
                 if (isFriend) {
@@ -36,139 +52,262 @@ class PublicProfileScreen extends StatelessWidget {
                 } else {
                   supabase.addFriend(profile.username);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Added ${profile.username} as friend!')),
+                    SnackBar(content: Text('Added ${profile.username} as friend! 🎉')),
                   );
                 }
               },
             ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.md),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile Card Header
-            Card(
-              color: AppColors.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: AppColors.purpleMid,
-                      child: Text(
-                        profile.username.isNotEmpty ? profile.username[0].toUpperCase() : 'U',
-                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      profile.username,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Level ${profile.level} • ${profile.xp} XP',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildStatTile(context, '🔥 Streak', '${profile.currentStreak} days'),
-                        _buildStatTile(context, '🏆 Best Streak', '${profile.longestStreak} days'),
-                        _buildStatTile(context, '🎖️ Badges', '${profile.badges.length}'),
-                      ],
-                    ),
-                  ],
+            // Top Row: Avatar + Stats
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 36,
+                  backgroundColor: cardColor,
+                  child: Text(
+                    profile.username.isNotEmpty ? profile.username[0].toUpperCase() : 'U',
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                 ),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildHeaderStat('${profile.mainTasks.length}', 'Tasks'),
+                      _buildHeaderStat(isFriend ? '1' : '0', 'Following'),
+                      _buildHeaderStat(isFriend ? '1' : '0', 'Followers'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Bio & Level
+            Text(profile.username, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+            Text('@${profile.username.toLowerCase().replaceAll(' ', '')}', style: const TextStyle(color: textMuted, fontSize: 13)),
+            const SizedBox(height: 4),
+            const Text('Building consistency day by day 🔥', style: TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 12),
+
+            // Level Progress Bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: levelProgress > 0 ? levelProgress : 0.15,
+                backgroundColor: cardColor,
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFB020)),
+                minHeight: 6,
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Level ${profile.level}', style: const TextStyle(color: textMuted, fontSize: 12)),
+                Text('${profile.xp} XP', style: const TextStyle(color: textMuted, fontSize: 12)),
+              ],
+            ),
 
-            // Badges Section
-            Text('Badges & Achievements', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: AppSpacing.xs),
-            if (profile.badges.isEmpty)
-              const Text('No badges earned yet.', style: TextStyle(color: AppColors.textSecondary))
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: profile.badges.map((b) => Chip(
-                  avatar: const Text('🏅'),
-                  label: Text(b.replaceAll('_', ' ').toUpperCase()),
-                  backgroundColor: AppColors.surface,
-                  side: const BorderSide(color: AppColors.surfaceBorder),
-                )).toList(),
+            const SizedBox(height: 16),
+
+            // Highest Streak Highlight Card
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
               ),
-            const SizedBox(height: AppSpacing.lg),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Highest Streak', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                  Row(
+                    children: [
+                      Text('${profile.longestStreak} Days', style: const TextStyle(color: fireOrange, fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.local_fire_department, color: fireOrange, size: 20),
+                    ],
+                  ),
+                ],
+              ),
+            ),
 
-            // Main Tasks & Quests Section
-            Text('Main Tasks & Quests', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: AppSpacing.xs),
+            const SizedBox(height: 24),
+
+            // Tasks Section
+            const Text('TASKS', style: TextStyle(color: textMuted, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+            const SizedBox(height: 12),
             if (profile.mainTasks.isEmpty)
-              const Text('No public tasks shared.', style: TextStyle(color: AppColors.textSecondary))
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
+                ),
+                child: const Center(
+                  child: Text('No public tasks shared.', style: TextStyle(color: textMuted)),
+                ),
+              )
             else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: profile.mainTasks.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.xs),
-                itemBuilder: (context, index) {
-                  final task = profile.mainTasks[index];
-                  return Card(
-                    color: AppColors.surface,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: ListTile(
-                      leading: Text(task.emoji, style: const TextStyle(fontSize: 28)),
-                      title: Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(
-                        task.type == 'quest'
-                            ? 'Quest • ${task.items.length} sub-tasks • 🔥 ${task.streak}d'
-                            : 'Goal • ${task.dailyMinutes} mins/day • 🔥 ${task.streak}d',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                      ),
-                      trailing: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.purpleMid,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        ),
-                        icon: const Icon(Icons.copy, size: 16),
-                        label: const Text('Copy'),
-                        onPressed: () {
+              Row(
+                children: [
+                  for (var i = 0; i < profile.mainTasks.length && i < 3; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
                           final goalService = context.read<GoalService>();
                           final questService = context.read<QuestService>();
                           supabase.copyTaskToLocal(
-                            task: task,
+                            task: profile.mainTasks[i],
                             goalService: goalService,
                             questService: questService,
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Copied "${task.title}" to your tasks!')),
+                            SnackBar(content: Text('Copied "${profile.mainTasks[i].title}" to your tasks! 🎉')),
                           );
                         },
+                        child: _buildTaskCard(
+                          profile.mainTasks[i].title,
+                          '${profile.mainTasks[i].streak}',
+                          cardColor,
+                          borderColor,
+                          fireOrange,
+                        ),
                       ),
                     ),
-                  );
-                },
+                  ],
+                ],
               ),
+            Center(
+              child: TextButton(
+                onPressed: () {},
+                child: const Text('View more', style: TextStyle(color: accentBlue, fontSize: 13)),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Medals Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('MEDALS', style: TextStyle(color: textMuted, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                const Text('View All', style: TextStyle(color: accentBlue, fontSize: 13)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 4,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                children: [
+                  _MedalPill(icon: Icons.star_rounded, color: const Color(0xFFFFB703), unlocked: profile.level >= 1),
+                  _MedalPill(icon: Icons.shield, color: const Color(0xFF38B6FF), unlocked: profile.mainTasks.isNotEmpty),
+                  _MedalPill(icon: Icons.emoji_events, color: const Color(0xFFFFB703), unlocked: profile.currentStreak >= 3),
+                  _MedalPill(icon: Icons.local_fire_department, color: const Color(0xFFFF6A00), unlocked: profile.currentStreak >= 7),
+                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.currentStreak >= 14),
+                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.currentStreak >= 30),
+                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.level >= 5),
+                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.level >= 10),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatTile(BuildContext context, String label, String value) {
+  static Widget _buildHeaderStat(String count, String label) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(count, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Color(0xFF8B9CB3), fontSize: 12)),
       ],
+    );
+  }
+
+  static Widget _buildTaskCard(String title, String count, Color cardColor, Color borderColor, Color fireOrange) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+              const Icon(Icons.copy_rounded, color: Color(0xFF8B9CB3), size: 14),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(count, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(width: 4),
+              Icon(Icons.local_fire_department, color: fireOrange, size: 16),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MedalPill extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final bool unlocked;
+
+  const _MedalPill({required this.icon, required this.color, required this.unlocked});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: unlocked ? color.withValues(alpha: 0.12) : const Color(0xFF0A111E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: unlocked ? color.withValues(alpha: 0.4) : const Color(0xFF1A2A44),
+        ),
+      ),
+      child: Icon(icon, color: color, size: 22),
     );
   }
 }

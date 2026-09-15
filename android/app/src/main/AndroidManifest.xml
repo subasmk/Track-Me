@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!--
-      TrackMe is fully offline (Hive local storage + Android home widgets
-      only) so it deliberately requests zero runtime permissions: no
-      INTERNET, no notifications, no storage access beyond the app's own
-      private directory that Android grants by default.
-    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:label="TrackMe"

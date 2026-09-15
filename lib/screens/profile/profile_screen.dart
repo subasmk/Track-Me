@@ -6,9 +6,6 @@ import '../../services/goal_service.dart';
 import '../../services/quest_service.dart';
 import '../../services/settings_service.dart';
 import '../../services/supabase_service.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_spacing.dart';
-import '../../theme/app_theme.dart';
 import '../achievements/achievements_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -35,256 +32,370 @@ class ProfileScreen extends StatelessWidget {
     final totalTasks = goals.length + quests.length;
     final totalFriends = supabase.friendsList.length;
 
+    const bgDark = Color(0xFF070D18);
+    const cardColor = Color(0xFF101B2E);
+    const borderColor = Color(0xFF1A2A44);
+    const accentBlue = Color(0xFF2E86DE);
+    const fireOrange = Color(0xFFFF6A00);
+    const textMuted = Color(0xFF8B9CB3);
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: bgDark,
       appBar: AppBar(
-        title: Text('@${settings.userName.toLowerCase().replaceAll(' ', '')}'),
-        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          '@${settings.userName.toLowerCase().replaceAll(' ', '')}',
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_note_rounded),
+            icon: const Icon(Icons.edit_note, color: Colors.white),
             tooltip: 'Edit Profile',
             onPressed: () => _showEditProfileDialog(context, settings),
           ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Instagram-style Profile Header Row
-              Row(
-                children: [
-                  // Profile Photo Avatar
-                  GestureDetector(
-                    onTap: () => _pickProfileImage(context, settings),
-                    child: Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        CircleAvatar(
-                          radius: 42,
-                          backgroundColor: AppColors.purpleMid,
-                          backgroundImage: settings.photoPath != null
-                              ? FileImage(File(settings.photoPath!))
-                              : null,
-                          child: settings.photoPath == null
-                              ? Text(
-                                  settings.userName.isNotEmpty
-                                      ? settings.userName[0].toUpperCase()
-                                      : 'U',
-                                  style: const TextStyle(
-                                    fontSize: 38,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Row: Avatar + Stats
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => _pickProfileImage(context, settings),
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundColor: cardColor,
+                        backgroundImage: settings.photoPath != null
+                            ? FileImage(File(settings.photoPath!))
+                            : null,
+                        child: settings.photoPath == null
+                            ? Text(
+                                settings.userName.isNotEmpty
+                                    ? settings.userName[0].toUpperCase()
+                                    : 'U',
+                                style: const TextStyle(
+                                    fontSize: 32,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        Container(
+                                    color: Colors.white),
+                              )
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: const BoxDecoration(
-                            color: AppColors.purpleLight,
+                            color: accentBlue,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.camera_alt,
                               size: 14, color: Colors.white),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-
-                  // Stats Row (Tasks, Friends, Streaks, XP)
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _InstaStatItem(count: '$totalTasks', label: 'Tasks'),
-                        _InstaStatItem(count: '$totalFriends', label: 'Friends'),
-                        _InstaStatItem(count: '🔥 $overallStreak', label: 'Streak'),
-                        _InstaStatItem(count: 'Lvl $level', label: '$totalXp XP'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: AppSpacing.sm),
-
-              // Name, Handle & Bio Block
-              Text(
-                settings.fullName,
-                style: AppTextStyles.title.copyWith(fontSize: 18),
-              ),
-              Text(
-                '@${settings.userName.toLowerCase().replaceAll(' ', '')}',
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                settings.bio,
-                style: AppTextStyles.body.copyWith(fontSize: 14),
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Level Progress Bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: levelProgress,
-                  minHeight: 8,
-                  backgroundColor: AppColors.surfaceBorder,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                      AppColors.flameYellow),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text('Level $level',
-                      style: AppTextStyles.caption
-                          .copyWith(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  Text('$totalXp XP', style: AppTextStyles.caption),
-                ],
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Action Buttons Row (Edit Profile + Share Profile)
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textPrimary,
-                        side: const BorderSide(color: AppColors.surfaceBorder),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
-                      icon: const Icon(Icons.edit_outlined, size: 16),
-                      label: const Text('Edit Profile'),
-                      onPressed: () => _showEditProfileDialog(context, settings),
-                    ),
+                    ],
                   ),
-                ],
+                ),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildHeaderStat('$totalTasks', 'Tasks'),
+                      _buildHeaderStat('$totalFriends', 'Friends'),
+                      _buildHeaderStat('🔥 $overallStreak', 'Streak'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Bio & Level
+            Text(settings.fullName,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18)),
+            Text('@${settings.userName.toLowerCase().replaceAll(' ', '')}',
+                style: const TextStyle(color: textMuted, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text(settings.bio,
+                style: const TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 12),
+
+            // Level Progress Bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: levelProgress,
+                backgroundColor: cardColor,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFFFFB020)),
+                minHeight: 6,
               ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Level $level',
+                    style: const TextStyle(color: textMuted, fontSize: 12)),
+                Text('$totalXp XP',
+                    style: const TextStyle(color: textMuted, fontSize: 12)),
+              ],
+            ),
 
-              const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: 16),
 
-              // Badges Section
-              Row(
+            // Highest Streak Highlight Card
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Badges & Trophies',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold)),
-                  TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const AchievementsScreen()),
-                    ),
-                    child: const Text('View All'),
+                  const Text('Highest Streak',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15)),
+                  Row(
+                    children: [
+                      Text('$longestStreak Days',
+                          style: const TextStyle(
+                              color: fireOrange,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.local_fire_department,
+                          color: fireOrange, size: 20),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.xs),
-              if (goalService.allUnlockedAchievements.isEmpty)
-                const Card(
-                  color: AppColors.surface,
-                  child: Padding(
-                    padding: EdgeInsets.all(AppSpacing.md),
-                    child: Text(
-                        'Complete daily goals and quests to unlock badges!',
-                        style: TextStyle(color: AppColors.textSecondary)),
-                  ),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: goalService.allUnlockedAchievements
-                      .map((a) => Chip(
-                            avatar: Icon(a.icon, color: a.color, size: 18),
-                            label: Text(a.title),
-                            backgroundColor: AppColors.surface,
-                            side:
-                                const BorderSide(color: AppColors.surfaceBorder),
-                          ))
-                      .toList(),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Tasks Section
+            const Text('TASKS',
+                style: TextStyle(
+                    color: textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1)),
+            const SizedBox(height: 12),
+            if (goals.isEmpty && quests.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor),
                 ),
+                child: const Center(
+                  child: Text('No active tasks added yet.',
+                      style: TextStyle(color: textMuted)),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  if (goals.isNotEmpty)
+                    Expanded(
+                        child: _buildTaskCard(
+                            goals[0].title,
+                            '${goals[0].streak}',
+                            cardColor,
+                            borderColor,
+                            fireOrange)),
+                  if (goals.length > 1) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _buildTaskCard(
+                            goals[1].title,
+                            '${goals[1].streak}',
+                            cardColor,
+                            borderColor,
+                            fireOrange)),
+                  ],
+                  if (quests.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _buildTaskCard(
+                            quests[0].title,
+                            '${quests[0].streak}',
+                            cardColor,
+                            borderColor,
+                            fireOrange)),
+                  ],
+                ],
+              ),
+            Center(
+              child: TextButton(
+                onPressed: () {},
+                child: const Text('View more',
+                    style: TextStyle(color: accentBlue, fontSize: 13)),
+              ),
+            ),
 
-              const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: 16),
 
-              // Active Tasks Grid / List Overview
-              Text('My Active Tasks ($totalTasks)',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: AppSpacing.xs),
-              if (goals.isEmpty && quests.isEmpty)
-                const Card(
-                  color: AppColors.surface,
-                  child: Padding(
-                    padding: EdgeInsets.all(AppSpacing.md),
-                    child: Text('No active tasks added yet.',
-                        style: TextStyle(color: AppColors.textSecondary)),
+            // Medals Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('MEDALS',
+                    style: TextStyle(
+                        color: textMuted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.1)),
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AchievementsScreen()),
                   ),
-                )
-              else ...[
-                ...goals.map((g) => Card(
-                      color: AppColors.surface,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      child: ListTile(
-                        leading: Text(g.emoji,
-                            style: const TextStyle(fontSize: 24)),
-                        title: Text(g.title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                            'Goal • ${g.dailyMinutes} min/day • 🔥 ${g.streak}d streak'),
-                        trailing: Icon(
-                          g.isCompletedToday
-                              ? Icons.check_circle
-                              : Icons.circle_outlined,
-                          color: g.isCompletedToday
-                              ? AppColors.success
-                              : AppColors.textMuted,
-                        ),
-                      ),
-                    )),
-                ...quests.map((q) => Card(
-                      color: AppColors.surface,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      child: ListTile(
-                        leading: Text(q.emoji,
-                            style: const TextStyle(fontSize: 24)),
-                        title: Text(q.title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                            'Quest • ${q.type} • 🔥 ${q.streak}d streak'),
-                        trailing: Icon(
-                          q.isCompletedToday
-                              ? Icons.check_circle
-                              : Icons.circle_outlined,
-                          color: q.isCompletedToday
-                              ? AppColors.success
-                              : AppColors.textMuted,
-                        ),
-                      ),
-                    )),
+                  child: const Text('View All',
+                      style: TextStyle(color: accentBlue, fontSize: 13)),
+                ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 4,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                children: [
+                  _MedalPill(
+                      icon: Icons.star_rounded,
+                      color: const Color(0xFFFFB703),
+                      unlocked: level >= 1),
+                  _MedalPill(
+                      icon: Icons.shield,
+                      color: const Color(0xFF38B6FF),
+                      unlocked: totalTasks >= 1),
+                  _MedalPill(
+                      icon: Icons.emoji_events,
+                      color: const Color(0xFFFFB703),
+                      unlocked: overallStreak >= 3),
+                  _MedalPill(
+                      icon: Icons.local_fire_department,
+                      color: const Color(0xFFFF6A00),
+                      unlocked: overallStreak >= 7),
+                  _MedalPill(
+                      icon: Icons.lock,
+                      color: textMuted,
+                      unlocked: overallStreak >= 14),
+                  _MedalPill(
+                      icon: Icons.lock,
+                      color: textMuted,
+                      unlocked: overallStreak >= 30),
+                  _MedalPill(
+                      icon: Icons.lock,
+                      color: textMuted,
+                      unlocked: level >= 5),
+                  _MedalPill(
+                      icon: Icons.lock,
+                      color: textMuted,
+                      unlocked: level >= 10),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _buildHeaderStat(String count, String label) {
+    return Column(
+      children: [
+        Text(count,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(color: Color(0xFF8B9CB3), fontSize: 12)),
+      ],
+    );
+  }
+
+  static Widget _buildTaskCard(String title, String count, Color cardColor,
+      Color borderColor, Color fireOrange) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14),
+                ),
+              ),
+              const Icon(Icons.copy_rounded,
+                  color: Color(0xFF8B9CB3), size: 14),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(count,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16)),
+              const SizedBox(width: 4),
+              Icon(Icons.local_fire_department, color: fireOrange, size: 16),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -311,32 +422,39 @@ class ProfileScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Edit Profile'),
+        backgroundColor: const Color(0xFF101B2E),
+        title:
+            const Text('Edit Profile', style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameCtrl,
-                style: AppTextStyles.body,
-                decoration: const InputDecoration(labelText: 'Full Name'),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: usernameCtrl,
-                style: AppTextStyles.body,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   labelText: 'Username',
-                  prefixIcon: Icon(Icons.alternate_email),
+                  labelStyle: TextStyle(color: Color(0xFF8B9CB3)),
+                  prefixIcon:
+                      Icon(Icons.alternate_email, color: Color(0xFF8B9CB3)),
                 ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: bioCtrl,
-                style: AppTextStyles.body,
+                style: const TextStyle(color: Colors.white),
                 maxLines: 2,
-                decoration: const InputDecoration(labelText: 'Bio'),
+                decoration: const InputDecoration(
+                    labelText: 'Bio',
+                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
               ),
             ],
           ),
@@ -344,11 +462,12 @@ class ProfileScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Cancel',
+                style: TextStyle(color: Color(0xFF8B9CB3))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.purpleMid,
+              backgroundColor: const Color(0xFF2E86DE),
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
@@ -374,32 +493,29 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _InstaStatItem extends StatelessWidget {
-  final String count;
-  final String label;
-  const _InstaStatItem({required this.count, required this.label});
+class _MedalPill extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final bool unlocked;
+
+  const _MedalPill(
+      {required this.icon, required this.color, required this.unlocked});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          count,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        color: unlocked
+            ? color.withValues(alpha: 0.12)
+            : const Color(0xFF0A111E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: unlocked
+              ? color.withValues(alpha: 0.4)
+              : const Color(0xFF1A2A44),
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
+      ),
+      child: Icon(icon, color: color, size: 22),
     );
   }
 }
