@@ -49,7 +49,7 @@ class ProfileScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          '@${settings.userName.toLowerCase().replaceAll(' ', '')}',
+          settings.fullName.isNotEmpty ? settings.fullName : settings.userName,
           style: const TextStyle(
               color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
@@ -282,54 +282,59 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
-              child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 4,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                children: [
-                  _MedalPill(
-                      icon: Icons.star_rounded,
-                      color: const Color(0xFFFFB703),
-                      unlocked: level >= 1),
-                  _MedalPill(
-                      icon: Icons.shield,
-                      color: const Color(0xFF38B6FF),
-                      unlocked: totalTasks >= 1),
-                  _MedalPill(
-                      icon: Icons.emoji_events,
-                      color: const Color(0xFFFFB703),
-                      unlocked: overallStreak >= 3),
-                  _MedalPill(
-                      icon: Icons.local_fire_department,
-                      color: const Color(0xFFFF6A00),
-                      unlocked: overallStreak >= 7),
-                  _MedalPill(
-                      icon: Icons.lock,
-                      color: textMuted,
-                      unlocked: overallStreak >= 14),
-                  _MedalPill(
-                      icon: Icons.lock,
-                      color: textMuted,
-                      unlocked: overallStreak >= 30),
-                  _MedalPill(
-                      icon: Icons.lock,
-                      color: textMuted,
-                      unlocked: level >= 5),
-                  _MedalPill(
-                      icon: Icons.lock,
-                      color: textMuted,
-                      unlocked: level >= 10),
-                ],
-              ),
+            Builder(
+              builder: (context) {
+                final unlockedList = <Widget>[];
+                if (level >= 1) {
+                  unlockedList.add(const _MedalPill(icon: Icons.star_rounded, color: Color(0xFFFFB703), unlocked: true));
+                }
+                if (totalTasks >= 1) {
+                  unlockedList.add(const _MedalPill(icon: Icons.shield, color: Color(0xFF38B6FF), unlocked: true));
+                }
+                if (overallStreak >= 3) {
+                  unlockedList.add(const _MedalPill(icon: Icons.emoji_events, color: Color(0xFFFFB703), unlocked: true));
+                }
+                if (overallStreak >= 7) {
+                  unlockedList.add(const _MedalPill(icon: Icons.local_fire_department, color: Color(0xFFFF6A00), unlocked: true));
+                }
+                if (overallStreak >= 14) {
+                  unlockedList.add(const _MedalPill(icon: Icons.whatshot, color: Color(0xFFFF7043), unlocked: true));
+                }
+                if (overallStreak >= 30) {
+                  unlockedList.add(const _MedalPill(icon: Icons.military_tech, color: Color(0xFFFFD54F), unlocked: true));
+                }
+
+                if (unlockedList.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: const Center(
+                      child: Text('Complete goals & build streaks to unlock medals!', style: TextStyle(color: textMuted)),
+                    ),
+                  );
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    children: unlockedList,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 20),
           ],
@@ -365,23 +370,14 @@ class ProfileScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14),
-                ),
-              ),
-              const Icon(Icons.copy_rounded,
-                  color: Color(0xFF8B9CB3), size: 14),
-            ],
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14),
           ),
           const SizedBox(height: 12),
           Row(

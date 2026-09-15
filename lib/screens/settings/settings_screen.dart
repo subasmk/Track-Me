@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/goal_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/supabase_service.dart';
 import '../../services/backup_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -189,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.success.withOpacity(0.5)),
+                border: Border.all(color: AppColors.success.withValues(alpha: 0.5)),
               ),
               child: const Row(
                 children: [
@@ -200,6 +201,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: AppColors.success,
                           fontWeight: FontWeight.bold)),
                 ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            const Divider(color: AppColors.surfaceBorder),
+            const SizedBox(height: AppSpacing.lg),
+
+            Text('Account & Session', style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Sign out of your account or switch to another account.',
+              style: AppTextStyles.bodyMuted,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                  side: const BorderSide(color: AppColors.danger),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Logout / Switch Account'),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AppColors.surface,
+                      title: const Text('Logout Account'),
+                      content: const Text('Are you sure you want to sign out? You will need to log in again.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Logout', style: TextStyle(color: AppColors.danger)),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirm == true && context.mounted) {
+                    final supabase = context.read<SupabaseService>();
+                    await supabase.signOut();
+                    if (context.mounted) {
+                      Navigator.popUntil(context, (route) => route.isFirst);
+                    }
+                  }
+                },
               ),
             ),
           ],

@@ -209,30 +209,59 @@ class PublicProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
-              child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 4,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                children: [
-                  _MedalPill(icon: Icons.star_rounded, color: const Color(0xFFFFB703), unlocked: profile.level >= 1),
-                  _MedalPill(icon: Icons.shield, color: const Color(0xFF38B6FF), unlocked: profile.mainTasks.isNotEmpty),
-                  _MedalPill(icon: Icons.emoji_events, color: const Color(0xFFFFB703), unlocked: profile.currentStreak >= 3),
-                  _MedalPill(icon: Icons.local_fire_department, color: const Color(0xFFFF6A00), unlocked: profile.currentStreak >= 7),
-                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.currentStreak >= 14),
-                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.currentStreak >= 30),
-                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.level >= 5),
-                  _MedalPill(icon: Icons.lock, color: textMuted, unlocked: profile.level >= 10),
-                ],
-              ),
+            Builder(
+              builder: (context) {
+                final unlockedList = <Widget>[];
+                if (profile.level >= 1) {
+                  unlockedList.add(const _MedalPill(icon: Icons.star_rounded, color: Color(0xFFFFB703), unlocked: true));
+                }
+                if (profile.mainTasks.isNotEmpty) {
+                  unlockedList.add(const _MedalPill(icon: Icons.shield, color: Color(0xFF38B6FF), unlocked: true));
+                }
+                if (profile.currentStreak >= 3) {
+                  unlockedList.add(const _MedalPill(icon: Icons.emoji_events, color: Color(0xFFFFB703), unlocked: true));
+                }
+                if (profile.currentStreak >= 7) {
+                  unlockedList.add(const _MedalPill(icon: Icons.local_fire_department, color: Color(0xFFFF6A00), unlocked: true));
+                }
+                if (profile.currentStreak >= 14) {
+                  unlockedList.add(const _MedalPill(icon: Icons.whatshot, color: Color(0xFFFF7043), unlocked: true));
+                }
+                if (profile.currentStreak >= 30) {
+                  unlockedList.add(const _MedalPill(icon: Icons.military_tech, color: Color(0xFFFFD54F), unlocked: true));
+                }
+
+                if (unlockedList.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: const Center(
+                      child: Text('No medals unlocked yet.', style: TextStyle(color: textMuted)),
+                    ),
+                  );
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    children: unlockedList,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 20),
           ],
