@@ -13,6 +13,7 @@ import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/goal_detail/goal_detail_screen.dart';
+import 'screens/auth/auth_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -139,7 +140,15 @@ class _TrackMeAppState extends State<TrackMeApp> {
         theme: AppTheme.dark,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.dark,
-        home: const HomeScreen(),
+        home: Builder(
+          builder: (context) {
+            final supabase = context.watch<SupabaseService>();
+            if (supabase.isLoggedIn) {
+              return const HomeScreen();
+            }
+            return const AuthScreen();
+          },
+        ),
       ),
     );
   }
