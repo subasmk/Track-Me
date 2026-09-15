@@ -60,7 +60,8 @@ class WidgetConfigureActivity : Activity() {
         val goals = loadGoals()
 
         if (goals.length() == 0) {
-            emptyContainer.visibility = View.VISIBLE
+            // Auto-fallback so 2x2 widget never displays a blank screen
+            selectGoal("default_goal")
             return
         }
 

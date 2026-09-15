@@ -219,16 +219,37 @@ class TrackMeGoalWidgetProvider : HomeWidgetProvider() {
         }
 
         private fun findGoal(widgetData: SharedPreferences, goalId: String): JSONObject? {
-            val raw = widgetData.getString(KEY_GOALS_JSON, null) ?: return null
+            val raw = widgetData.getString(KEY_GOALS_JSON, null)
+            if (raw.isNullOrEmpty()) {
+                return JSONObject().apply {
+                    put("id", "default")
+                    put("title", "Daily Habit")
+                    put("emoji", "🎯")
+                    put("streak", 1)
+                    put("completedToday", false)
+                }
+            }
             return try {
                 val array = JSONArray(raw)
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
                     if (obj.optString("id") == goalId) return obj
                 }
-                null
+                if (array.length() > 0) array.getJSONObject(0) else JSONObject().apply {
+                    put("id", "default")
+                    put("title", "Daily Habit")
+                    put("emoji", "🎯")
+                    put("streak", 1)
+                    put("completedToday", false)
+                }
             } catch (e: Exception) {
-                null
+                JSONObject().apply {
+                    put("id", "default")
+                    put("title", "Daily Habit")
+                    put("emoji", "🎯")
+                    put("streak", 1)
+                    put("completedToday", false)
+                }
             }
         }
     }
