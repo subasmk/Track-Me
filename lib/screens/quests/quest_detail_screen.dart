@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/quest_service.dart';
+import '../../services/home_widget_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
@@ -195,6 +196,33 @@ class _QuestInfoPanel extends StatelessWidget {
                           textAlign: TextAlign.center,
                         ),
                       ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.md),
+
+                  // Add to Home Screen Widget Option
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await HomeWidgetService.pinQuestWidget(quest);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Requested adding "${quest.title}" widget to Home Screen! 📲'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.widgets_outlined, size: 18),
+                      label: const Text('Add to Home Screen'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.purpleLight,
+                        side: const BorderSide(color: AppColors.purpleMid),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
                   ),
 

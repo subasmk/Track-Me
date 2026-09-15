@@ -17,6 +17,7 @@ import '../achievements/achievements_screen.dart';
 import '../stats/stats_screen.dart';
 import '../settings/settings_screen.dart';
 import '../social/social_screen.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -154,6 +155,24 @@ class _TopBar extends StatelessWidget {
             ],
           ),
         ),
+        GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          ),
+          child: CircleAvatar(
+            radius: 18,
+            backgroundColor: AppColors.purpleMid,
+            child: Text(
+              userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
         IconButton(
           icon: const Icon(Icons.people_outline,
               color: AppColors.textSecondary),
@@ -323,6 +342,15 @@ Widget _BottomNav(BuildContext context) {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const StatsScreen()),
+              ),
+            ),
+            _NavItem(
+              icon: Icons.person_rounded,
+              label: 'Profile',
+              selected: false,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
               ),
             ),
           ],

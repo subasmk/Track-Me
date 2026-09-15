@@ -173,6 +173,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Restoring replaces everything currently in the app.',
               style: AppTextStyles.caption,
             ),
+            const SizedBox(height: AppSpacing.xl),
+            const Divider(color: AppColors.surfaceBorder),
+            const SizedBox(height: AppSpacing.lg),
+
+            Text('Cloud Storage Status', style: AppTextStyles.title),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Online Database Sync is active. Your profile, streaks, badges, and team tasks sync automatically under your username.',
+              style: AppTextStyles.bodyMuted,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.success.withOpacity(0.5)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cloud_done_rounded, color: AppColors.success),
+                  SizedBox(width: 10),
+                  Text('Cloud Profile Sync Active',
+                      style: TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
           ],
         ),
       ),

@@ -21,7 +21,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.trackme.app"
+        applicationId "com.trackme.tracker"
         // TrackMe's widgets use plain android.widget RemoteViews + AppWidget
         // APIs and org.json (both built into the Android platform), so
         // there's no TrackMe-specific reason to raise minSdk above whatever
@@ -44,7 +44,9 @@ android {
     }
 
     packagingOptions {
-        doNotStrip "**/*.so"
+        resources {
+            excludes += ['META-INF/LICENSE', 'META-INF/NOTICE']
+        }
     }
 }
 

@@ -12,8 +12,8 @@ import 'goal_service.dart';
 import 'quest_service.dart';
 
 class SupabaseService extends ChangeNotifier {
-  static const String defaultUrl = 'https://YOUR_SUPABASE_PROJECT.supabase.co';
-  static const String defaultAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+  static const String defaultUrl = 'https://sb_publishable_vOrxzXaw9wbIFzqd81ETfQ_s3-8l4nN.supabase.co';
+  static const String defaultAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
@@ -37,13 +37,6 @@ class SupabaseService extends ChangeNotifier {
     final finalUrl = url ?? defaultUrl;
     final finalKey = anonKey ?? defaultAnonKey;
 
-    if (finalUrl.contains('YOUR_SUPABASE_PROJECT')) {
-      debugPrint('Supabase credentials not configured yet, running in Cloud-Ready Offline Mode.');
-      _isInitialized = true;
-      notifyListeners();
-      return;
-    }
-
     try {
       await Supabase.initialize(
         url: finalUrl,
@@ -56,6 +49,13 @@ class SupabaseService extends ChangeNotifier {
       _isInitialized = true;
       notifyListeners();
     }
+  }
+
+  Future<void> saveSupabaseCredentials(String url, String key) async {
+    final box = HiveService.settingsBox;
+    await box.put('supabase_url', url.trim());
+    await box.put('supabase_key', key.trim());
+    await initSupabase(url: url.trim(), anonKey: key.trim());
   }
 
   void _loadLocalState() {

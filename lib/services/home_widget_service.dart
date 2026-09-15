@@ -103,4 +103,13 @@ class HomeWidgetService {
       // Safe to ignore.
     }
   }
+
+  /// Requests pinning the Quest widget to the device's home screen.
+  static Future<void> pinQuestWidget(Quest quest) async {
+    try {
+      await HomeWidget.requestPinWidget(
+        androidName: androidQuestWidgetProvider,
+      );
+    } catch (_) {}
+  }
 }

@@ -66,10 +66,8 @@ class TrackMeGoalWidgetProvider : HomeWidgetProvider() {
         private const val KEY_GOALS_JSON = "goals_json"
 
         /** Width, in dp, above which the "Medium" content (title + week
-         * strip) is shown instead of the compact "Small" view. Sits
-         * roughly halfway between this provider's minWidth (110dp) and
-         * maxResizeWidth (250dp) in trackme_goal_widget_info.xml. */
-        private const val MEDIUM_WIDTH_THRESHOLD_DP = 170
+         * strip) is shown instead of the compact "Small" view. */
+        private const val MEDIUM_WIDTH_THRESHOLD_DP = 110
 
         fun updateAppWidget(
             context: Context,
@@ -162,20 +160,20 @@ class TrackMeGoalWidgetProvider : HomeWidgetProvider() {
         /** The three moods this widget's mascot (and its message) can be
          * in — mirrors how Duolingo's own mascot expression shifts with
          * its nudge text rather than staying static. */
-        private enum class MascotState { HAPPY, WORRIED, NEUTRAL }
+        private enum class MascotState { HAPPY, PLAYFUL, SLEEPY, WORRIED, NEUTRAL }
 
         private fun mascotStateFor(completedToday: Boolean, streak: Int, hour: Int): MascotState {
             if (completedToday) return MascotState.HAPPY
-            if (streak == 0) return MascotState.NEUTRAL
+            if (hour >= 22 || hour < 6) return MascotState.SLEEPY
+            if (streak > 3) return MascotState.PLAYFUL
             return if (hour >= 18) MascotState.WORRIED else MascotState.NEUTRAL
         }
 
-        /** Duolingo-style contextual nudge instead of a fixed "Keep it
-         * up!" — gentle early in the day, more urgent as it gets late
-         * with the streak still at risk, celebratory once done. */
         private fun subtitleFor(context: Context, state: MascotState, streak: Int, hour: Int): String =
             when (state) {
                 MascotState.HAPPY -> context.getString(R.string.widget_nice_work)
+                MascotState.PLAYFUL -> "Streak on fire! 🔥"
+                MascotState.SLEEPY -> "Rest up & stay consistent 💤"
                 MascotState.WORRIED ->
                     if (hour >= 21) context.getString(R.string.widget_dont_lose_streak)
                     else context.getString(R.string.widget_getting_late)
@@ -186,6 +184,8 @@ class TrackMeGoalWidgetProvider : HomeWidgetProvider() {
 
         private fun mascotDrawableFor(state: MascotState): Int = when (state) {
             MascotState.HAPPY -> R.drawable.sloth_happy
+            MascotState.PLAYFUL -> R.drawable.sloth_playful
+            MascotState.SLEEPY -> R.drawable.sloth_sleepy
             MascotState.WORRIED -> R.drawable.sloth_worried
             MascotState.NEUTRAL -> R.drawable.sloth_playful
         }
