@@ -63,6 +63,14 @@ class Quest extends HiveObject {
   @HiveField(14)
   DateTime createdAt;
 
+  /// Days of the week this quest repeats on (1 = Mon, 7 = Sun).
+  @HiveField(15)
+  List<int>? targetDays;
+
+  /// Last date a sub-item was toggled
+  @HiveField(16)
+  DateTime? lastItemToggleDate;
+
   Quest({
     required this.id,
     required this.title,
@@ -79,8 +87,43 @@ class Quest extends HiveObject {
     this.focusStats = 'STR',
     this.lastCompleted,
     DateTime? createdAt,
+    List<int>? targetDays,
+    this.lastItemToggleDate,
   })  : items = items ?? <QuestItem>[],
-        createdAt = createdAt ?? DateTime.now();
+        createdAt = createdAt ?? DateTime.now(),
+        targetDays = targetDays ?? const [1, 2, 3, 4, 5, 6, 7];
+
+  /// Days of the week this quest repeats on (1 = Mon, 7 = Sun).
+  List<int> get days =>
+      (targetDays == null || targetDays!.isEmpty) ? const [1, 2, 3, 4, 5, 6, 7] : targetDays!;
+
+  /// True if scheduled on all 7 days of the week.
+  bool get isAllDays => days.length >= 7;
+
+  /// True if scheduled on a given weekday (1 = Mon, 7 = Sun).
+  bool isScheduledForDay(int weekday) {
+    if (targetDays == null || targetDays!.isEmpty) return true;
+    return targetDays!.contains(weekday);
+  }
+
+  /// True if scheduled for today.
+  bool get isScheduledForToday => isScheduledForDay(DateTime.now().weekday);
+
+  /// Human-readable label for active days, e.g. "Everyday" or "Mon, Wed, Fri".
+  String get daysLabel {
+    if (isAllDays) return 'Everyday';
+    const dayMap = {
+      1: 'Mon',
+      2: 'Tue',
+      3: 'Wed',
+      4: 'Thu',
+      5: 'Fri',
+      6: 'Sat',
+      7: 'Sun',
+    };
+    final sorted = List<int>.from(days)..sort();
+    return sorted.map((d) => dayMap[d] ?? '').where((s) => s.isNotEmpty).join(', ');
+  }
 
   /// True if the quest was completed today.
   bool get isCompletedToday {

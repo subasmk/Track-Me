@@ -27,6 +27,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
   String _difficulty = 'Medium';
   String? _startTime;
   String? _endTime;
+  List<int> _targetDays = [1, 2, 3, 4, 5, 6, 7];
   final List<QuestItem> _items = [];
 
   bool get _isEditing => widget.existingQuest != null;
@@ -50,6 +51,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
       _difficulty = q.difficulty;
       _startTime = q.startTime;
       _endTime = q.endTime;
+      _targetDays = List<int>.from(q.days);
       _items.addAll(q.items.map((i) => QuestItem(
             id: i.id,
             name: i.name,
@@ -163,6 +165,26 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
     );
   }
 
+  void _toggleDay(int day) {
+    setState(() {
+      if (_targetDays.contains(day)) {
+        _targetDays.remove(day);
+      } else {
+        _targetDays.add(day);
+      }
+    });
+  }
+
+  void _toggleAllDays() {
+    setState(() {
+      if (_targetDays.length >= 7) {
+        _targetDays = [];
+      } else {
+        _targetDays = [1, 2, 3, 4, 5, 6, 7];
+      }
+    });
+  }
+
   Future<void> _save() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
@@ -174,6 +196,8 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
 
     final questService = context.read<QuestService>();
 
+    final selectedDays = _targetDays.isEmpty ? [1, 2, 3, 4, 5, 6, 7] : _targetDays;
+
     if (_isEditing) {
       final q = widget.existingQuest!;
       q.title = title;
@@ -182,6 +206,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
       q.difficulty = _difficulty;
       q.startTime = _startTime;
       q.endTime = _endTime;
+      q.targetDays = selectedDays;
       q.items = _items;
       q.xp = Quest.xpForDifficulty(_difficulty);
       q.gold = Quest.goldForDifficulty(_difficulty);
@@ -197,6 +222,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
         difficulty: _difficulty,
         startTime: _startTime,
         endTime: _endTime,
+        targetDays: selectedDays,
         items: _items,
         focusStats: _focusController.text.trim().isEmpty
             ? null
@@ -342,6 +368,35 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
                     onTap: () => _pickTime(false),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            // Visible Days
+            _SectionLabel('Visible Days'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _SelectChip(
+                  label: 'All Days',
+                  selected: _targetDays.length >= 7,
+                  onTap: _toggleAllDays,
+                  selectedColor: AppColors.purpleMid,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _DayChip(dayName: 'Mon', dayNum: 1, selected: _targetDays.contains(1), onTap: () => _toggleDay(1)),
+                _DayChip(dayName: 'Tue', dayNum: 2, selected: _targetDays.contains(2), onTap: () => _toggleDay(2)),
+                _DayChip(dayName: 'Wed', dayNum: 3, selected: _targetDays.contains(3), onTap: () => _toggleDay(3)),
+                _DayChip(dayName: 'Thu', dayNum: 4, selected: _targetDays.contains(4), onTap: () => _toggleDay(4)),
+                _DayChip(dayName: 'Fri', dayNum: 5, selected: _targetDays.contains(5), onTap: () => _toggleDay(5)),
+                _DayChip(dayName: 'Sat', dayNum: 6, selected: _targetDays.contains(6), onTap: () => _toggleDay(6)),
+                _DayChip(dayName: 'Sun', dayNum: 7, selected: _targetDays.contains(7), onTap: () => _toggleDay(7)),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
@@ -582,6 +637,48 @@ class _ItemRow extends StatelessWidget {
                 color: AppColors.danger, size: 18),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DayChip extends StatelessWidget {
+  final String dayName;
+  final int dayNum;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DayChip({
+    required this.dayName,
+    required this.dayNum,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.purpleMid.withOpacity(0.2)
+              : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(
+            color: selected ? AppColors.purpleMid : AppColors.surfaceBorder,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          dayName,
+          style: AppTextStyles.caption.copyWith(
+            color: selected ? AppColors.purpleLight : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 12,
+          ),
+        ),
       ),
     );
   }

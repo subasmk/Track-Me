@@ -23,12 +23,16 @@ class QuestItem extends HiveObject {
   @HiveField(4)
   String unit;
 
+  @HiveField(5)
+  bool isDone;
+
   QuestItem({
     required this.id,
     required this.name,
     required this.target,
     this.sets = 1,
     this.unit = 'reps',
+    this.isDone = false,
   });
 
   /// Display string matching the screenshot format: [15/15 3]

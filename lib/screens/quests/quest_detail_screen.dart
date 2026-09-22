@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
+import '../../models/quest_item.dart';
 import 'add_quest_screen.dart';
 
 class QuestDetailScreen extends StatelessWidget {
@@ -174,18 +175,20 @@ class _QuestInfoPanel extends StatelessWidget {
                     )
                   else
                     ...quest.items.map((item) => _GoalRow(
+                          questId: quest.id,
                           item: item,
                           completed: done,
+                          questService: questService,
                         )),
 
                   const SizedBox(height: AppSpacing.md),
 
-                  // Footer: type, difficulty, xp, gold, focus
+                  // Footer: type, difficulty, days, xp, gold, focus
                   Center(
                     child: Column(
                       children: [
                         Text(
-                          'Type: ${quest.type} | Difficulty: ${quest.difficulty}',
+                          'Type: ${quest.type} | Difficulty: ${quest.difficulty} | Days: ${quest.daysLabel}',
                           style: AppTextStyles.caption,
                           textAlign: TextAlign.center,
                         ),
@@ -361,47 +364,69 @@ class _Header extends StatelessWidget {
 }
 
 class _GoalRow extends StatelessWidget {
-  final dynamic item; // QuestItem
+  final String questId;
+  final QuestItem item;
   final bool completed;
-  const _GoalRow({required this.item, required this.completed});
+  final QuestService questService;
+
+  const _GoalRow({
+    required this.questId,
+    required this.item,
+    required this.completed,
+    required this.questService,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(item.name, style: AppTextStyles.body),
-          ),
-          Text(
-            '[${item.target}/${item.target} ${item.sets}]',
-            style: AppTextStyles.caption.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: completed
-                  ? AppColors.success.withOpacity(0.2)
-                  : AppColors.surfaceLight,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: completed
-                    ? AppColors.success
-                    : AppColors.surfaceBorder,
-                width: 1.5,
+    final itemDone = completed || item.isDone;
+
+    return InkWell(
+      onTap: () async {
+        await questService.toggleQuestItem(questId, item.id);
+      },
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                item.name,
+                style: AppTextStyles.body.copyWith(
+                  decoration: itemDone ? TextDecoration.lineThrough : null,
+                  color: itemDone ? AppColors.textMuted : AppColors.textPrimary,
+                ),
               ),
             ),
-            child: completed
-                ? const Icon(Icons.check, size: 14, color: AppColors.success)
-                : null,
-          ),
-        ],
+            Text(
+              '[${item.target}/${item.target} ${item.sets}]',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: itemDone
+                    ? AppColors.success.withOpacity(0.2)
+                    : AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: itemDone
+                      ? AppColors.success
+                      : AppColors.surfaceBorder,
+                  width: 1.5,
+                ),
+              ),
+              child: itemDone
+                  ? const Icon(Icons.check, size: 14, color: AppColors.success)
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }

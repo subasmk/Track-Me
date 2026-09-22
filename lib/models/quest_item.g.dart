@@ -22,13 +22,14 @@ class QuestItemAdapter extends TypeAdapter<QuestItem> {
       target: fields[2] as int,
       sets: fields[3] as int,
       unit: fields[4] as String,
+      isDone: (fields[5] as bool?) ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, QuestItem obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -38,7 +39,9 @@ class QuestItemAdapter extends TypeAdapter<QuestItem> {
       ..writeByte(3)
       ..write(obj.sets)
       ..writeByte(4)
-      ..write(obj.unit);
+      ..write(obj.unit)
+      ..writeByte(5)
+      ..write(obj.isDone);
   }
 
   @override
