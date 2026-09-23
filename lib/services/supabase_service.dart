@@ -13,6 +13,23 @@ import 'hive_service.dart';
 import 'goal_service.dart';
 import 'quest_service.dart';
 
+/// What the Settings screen can truthfully say about cloud sync.
+enum CloudStatus {
+  /// Checking right now.
+  checking,
+  /// The Supabase client couldn't start (no network at launch).
+  offline,
+  /// Not signed in: everything stays on this phone.
+  signedOut,
+  /// Signed in, but the profiles table doesn't exist in the project yet
+  /// (supabase/schema.sql hasn't been run).
+  notSetUp,
+  /// Signed in and the profile row is reachable.
+  synced,
+  /// Signed in, but the check failed (network or server error).
+  error,
+}
+
 class SupabaseService extends ChangeNotifier {
   static const String defaultUrl = 'https://ceckjlbfwwjdhuffsmta.supabase.co';
   static const String defaultAnonKey = 'sb_publishable_jQ20Rs4lNnGCxP0xMuRcpg_pLPDH69e';
@@ -32,6 +49,72 @@ class SupabaseService extends ChangeNotifier {
 
   User? get currentUser => _clientReady ? Supabase.instance.client.auth.currentUser : null;
   bool get isLoggedIn => currentUser != null;
+  bool get clientReady => _clientReady;
+  String? get email => currentUser?.email ?? _debugEmail;
+
+  CloudStatus _cloudStatus = CloudStatus.checking;
+  CloudStatus get cloudStatus => _cloudStatus;
+
+  String? _debugEmail;
+
+  /// Screenshot tests only: show a signed-in account and a fixed sync state.
+  @visibleForTesting
+  void debugSetAccount({required String email, required CloudStatus status}) {
+    _debugEmail = email;
+    _cloudStatus = status;
+  }
+
+  /// Last time stats were written to the cloud profile from this phone.
+  DateTime? get lastSyncedAt {
+    final raw = HiveService.settingsBox.get('cloud_last_synced_at') as String?;
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  /// Works out the real sync state instead of assuming it.
+  Future<CloudStatus> checkCloudStatus() async {
+    _cloudStatus = CloudStatus.checking;
+    notifyListeners();
+    final uid = currentUser?.id;
+    if (!_clientReady) {
+      _cloudStatus = CloudStatus.offline;
+    } else if (uid == null) {
+      _cloudStatus = CloudStatus.signedOut;
+    } else {
+      try {
+        await Supabase.instance.client.from('profiles').select('id').eq('id', uid).maybeSingle();
+        _cloudStatus = CloudStatus.synced;
+      } on PostgrestException catch (e) {
+        // PGRST205 / 42P01: the table isn't there (schema not run yet).
+        final missing = e.code == 'PGRST205' || e.code == '42P01' ||
+            e.message.contains('Could not find the table');
+        _cloudStatus = missing ? CloudStatus.notSetUp : CloudStatus.error;
+      } catch (_) {
+        _cloudStatus = CloudStatus.error;
+      }
+    }
+    notifyListeners();
+    return _cloudStatus;
+  }
+
+  /// Permanently deletes the signed-in account (auth user, profile,
+  /// friendships) through the delete_my_account() function in
+  /// supabase/schema.sql, then signs out. Returns false if it failed.
+  Future<bool> deleteAccount() async {
+    if (!_clientReady || currentUser == null) return false;
+    final uid = currentUser!.id;
+    try {
+      await Supabase.instance.client.storage.from('avatars').remove(['$uid/avatar.jpg']);
+    } catch (_) {}
+    try {
+      await Supabase.instance.client.rpc('delete_my_account');
+    } catch (e) {
+      debugPrint('deleteAccount failed: $e');
+      return false;
+    }
+    await HiveService.settingsBox.delete('profile_done_$uid');
+    await signOut();
+    return true;
+  }
 
   String _currentUsername = 'Learner';
   String get currentUsername => _currentUsername;
@@ -259,6 +342,8 @@ class SupabaseService extends ChangeNotifier {
   Future<void> syncLocalProfileToCloud({
     required List<Goal> goals,
     required List<Quest> quests,
+    bool shareQuests = true,
+    bool discoverable = true,
   }) async {
     final maxStreak = goals.fold<int>(0, (prev, g) => g.streak > prev ? g.streak : prev);
     final longest = goals.fold<int>(0, (prev, g) => g.longestStreak > prev ? g.longestStreak : prev);
@@ -298,15 +383,18 @@ class SupabaseService extends ChangeNotifier {
       currentStreak: maxStreak,
       longestStreak: longest,
       badges: ['first_step', if (maxStreak >= 7) 'streak_7', if (maxStreak >= 14) 'streak_14'],
-      mainTasks: mainTasks,
+      mainTasks: shareQuests ? mainTasks : const [],
     );
 
     if (_clientReady) {
       try {
         final data = profile.toJson()
           ..remove('id')
-          ..remove('username');
+          ..remove('username')
+          ..['discoverable'] = discoverable;
         await Supabase.instance.client.from('profiles').update(data).eq('id', userId);
+        await HiveService.settingsBox
+            .put('cloud_last_synced_at', DateTime.now().toIso8601String());
       } catch (e) {
         debugPrint('Supabase cloud sync error: $e');
       }

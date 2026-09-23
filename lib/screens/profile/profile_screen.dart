@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../widgets/edit_profile_sheet.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/quest.dart';
 import '../../services/goal_service.dart';
@@ -133,7 +134,7 @@ class ProfileScreen extends StatelessWidget {
             child: Row(children: [
               Expanded(
                   child: _Button('Edit profile',
-                      onTap: () => _showEditProfileDialog(context, settings))),
+                      onTap: () => showEditProfileSheet(context))),
               const SizedBox(width: 6),
               Expanded(
                 child: _Button('Share profile', onTap: () {
@@ -246,88 +247,9 @@ class ProfileScreen extends StatelessWidget {
       await settings.updateProfile(
         fullName: settings.fullName,
         bio: settings.bio,
-        photoPath: picked.path,
+        photoPath: await keepPhoto(picked.path),
       );
     }
-  }
-
-  static void _showEditProfileDialog(
-      BuildContext context, SettingsService settings) {
-    final nameCtrl = TextEditingController(text: settings.fullName);
-    final usernameCtrl = TextEditingController(text: settings.userName);
-    final bioCtrl = TextEditingController(text: settings.bio);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF101B2E),
-        title:
-            const Text('Edit Profile', style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: usernameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  labelStyle: TextStyle(color: Color(0xFF8B9CB3)),
-                  prefixIcon:
-                      Icon(Icons.alternate_email, color: Color(0xFF8B9CB3)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: bioCtrl,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 2,
-                decoration: const InputDecoration(
-                    labelText: 'Bio',
-                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF8B9CB3))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E86DE),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              final newUsername = usernameCtrl.text.trim();
-              if (newUsername.isNotEmpty) {
-                await settings.setUserName(newUsername);
-                await settings.updateProfile(
-                  fullName: nameCtrl.text.trim(),
-                  bio: bioCtrl.text.trim(),
-                );
-                if (context.mounted) {
-                  context.read<GoalService>().setUserName(newUsername);
-                  context.read<SupabaseService>().updateUsername(newUsername);
-                  Navigator.pop(ctx);
-                }
-              }
-            },
-            child: const Text('Save Profile'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

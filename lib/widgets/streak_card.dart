@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
+import '../services/settings_service.dart';
 import '../utils/app_clock.dart';
 import '../utils/date_utils_x.dart';
 import 'sloth_sticker.dart';
@@ -102,9 +104,12 @@ class StreakCard extends StatelessWidget {
             ]),
           ),
           const SizedBox(width: 8),
-          SlothStickerView(sticker: mood.sticker, size: 96, glow: false)
-              .animate(onPlay: (c) => c.repeat(reverse: true))
-              .moveY(begin: 0, end: -4, duration: 1400.ms, curve: Curves.easeInOut),
+          if (Provider.of<SettingsService?>(context)?.reduceMotion ?? false)
+            SlothStickerView(sticker: mood.sticker, size: 96, glow: false)
+          else
+            SlothStickerView(sticker: mood.sticker, size: 96, glow: false)
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .moveY(begin: 0, end: -4, duration: 1400.ms, curve: Curves.easeInOut),
         ]),
         const SizedBox(height: 12),
         Container(

@@ -13,6 +13,7 @@ create table if not exists public.profiles (
   longest_streak int not null default 0,
   badges jsonb not null default '[]',
   main_tasks jsonb not null default '[]',
+  discoverable boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint username_format check (username ~ '^[a-z0-9_.]{3,20}$')
@@ -61,3 +62,21 @@ create policy "users upload own avatar" on storage.objects
   for insert to authenticated with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "users replace own avatar" on storage.objects
   for update to authenticated using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create policy "users delete own avatar" on storage.objects
+  for delete to authenticated using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- 4. Privacy: users can hide themselves from Discover / suggestions (Settings > Privacy)
+alter table public.profiles add column if not exists discoverable boolean not null default true;
+
+-- 5. Delete account (Settings > Account > Delete account). Removes the signed-in
+--    user's auth account; the profile and friendships go with it (on delete cascade).
+--    The app removes the avatar photo through the Storage API first.
+create or replace function public.delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;

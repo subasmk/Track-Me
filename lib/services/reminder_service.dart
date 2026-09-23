@@ -5,6 +5,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/quest.dart';
+import 'hive_service.dart';
 
 /// Daily local-notification reminders for quests with a reminderTime.
 ///
@@ -80,10 +81,29 @@ class ReminderService {
     }
   }
 
+  static const keyRemindersEnabled = 'reminders_enabled';
+  static const keyStreakNudge = 'streak_nudge_enabled';
+  static const keyStreakNudgeTime = 'streak_nudge_time';
+
+  /// Id of the daily "keep your streak" notification (quest ids are >= 8).
+  static const streakNudgeId = 1;
+
+  static bool _flag(String key, bool fallback) {
+    try {
+      return (HiveService.settingsBox.get(key) as bool?) ?? fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  /// Master switch from Settings. When off, no quest reminder is scheduled.
+  static bool get enabled => _flag(keyRemindersEnabled, true);
+
   static Future<void> schedule(Quest quest) async {
     await init();
     if (!_ready) return;
     await cancel(quest);
+    if (!enabled) return;
     final t = parseTime(quest.reminderTime);
     if (t == null) return;
     final now = tz.TZDateTime.now(tz.local);
@@ -111,7 +131,43 @@ class ReminderService {
   /// Re-schedules every quest (e.g. at startup after an app update).
   static Future<void> rescheduleAll(Iterable<Quest> quests) async {
     for (final q in quests) {
-      if (q.reminderTime != null) await schedule(q);
+      if (q.reminderTime != null) {
+        await schedule(q);
+      } else {
+        await cancel(q);
+      }
+    }
+    await scheduleStreakNudge();
+  }
+
+  /// One daily evening nudge to protect the streak, at the time chosen in
+  /// Settings (default 20:00). Cancelled when reminders or the nudge are off.
+  static Future<void> scheduleStreakNudge() async {
+    await init();
+    if (!_ready) return;
+    await _plugin.cancel(streakNudgeId);
+    if (!enabled || !_flag(keyStreakNudge, true)) return;
+    String? raw;
+    try {
+      raw = HiveService.settingsBox.get(keyStreakNudgeTime) as String?;
+    } catch (_) {}
+    final t = parseTime(raw ?? '20:00') ?? (hour: 20, minute: 0);
+    final now = tz.TZDateTime.now(tz.local);
+    var at = tz.TZDateTime(tz.local, now.year, now.month, now.day, t.hour, t.minute);
+    if (!at.isAfter(now)) at = at.add(const Duration(days: 1));
+    try {
+      await _plugin.zonedSchedule(
+        streakNudgeId,
+        'Your streak is waiting',
+        "Haven't checked anything off today? Do one now to keep your streak alive.",
+        at,
+        const NotificationDetails(android: _channel),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: 'trackme://quests',
+      );
+    } catch (e) {
+      debugPrint('ReminderService.scheduleStreakNudge failed: $e');
     }
   }
 }

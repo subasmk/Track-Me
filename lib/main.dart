@@ -97,12 +97,15 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
   void _onSettingsChanged() {
     _goalService.setUserName(_settingsService.userName);
     _supabaseService.updateUsername(_settingsService.userName);
+    _onDataChanged(); // privacy toggles change what the cloud profile shows
   }
 
   void _onDataChanged() {
     _supabaseService.syncLocalProfileToCloud(
       goals: _goalService.goals,
       quests: _questService.quests,
+      shareQuests: _settingsService.shareQuests,
+      discoverable: _settingsService.discoverable,
     );
   }
 
