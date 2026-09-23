@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import '../utils/app_clock.dart';
 import 'quest_item.dart';
 
 part 'quest.g.dart';
@@ -107,7 +108,7 @@ class Quest extends HiveObject {
   }
 
   /// True if scheduled for today.
-  bool get isScheduledForToday => isScheduledForDay(DateTime.now().weekday);
+  bool get isScheduledForToday => isScheduledForDay(AppClock.now().weekday);
 
   /// Human-readable label for active days, e.g. "Everyday" or "Mon, Wed, Fri".
   String get daysLabel {
@@ -128,10 +129,28 @@ class Quest extends HiveObject {
   /// True if the quest was completed today.
   bool get isCompletedToday {
     if (lastCompleted == null) return false;
-    final now = DateTime.now();
-    return lastCompleted!.year == now.year &&
-        lastCompleted!.month == now.month &&
-        lastCompleted!.day == now.day;
+    return AppClock.isSameDay(lastCompleted!, AppClock.now());
+  }
+
+  /// Number of sub-tasks ticked off today (all of them once completed).
+  int get doneItemCount =>
+      isCompletedToday ? items.length : items.where((i) => i.isDone).length;
+
+  /// 0.0 - 1.0 progress for today. A quest without sub-tasks is either
+  /// 0 or 1 depending on whether it was completed.
+  double get todayProgress {
+    if (isCompletedToday) return 1;
+    if (items.isEmpty) return 0;
+    return doneItemCount / items.length;
+  }
+
+  /// The first sub-task still open today, if any.
+  QuestItem? get nextItem {
+    if (isCompletedToday) return null;
+    for (final item in items) {
+      if (!item.isDone) return item;
+    }
+    return null;
   }
 
   /// Returns a human-readable time range string, e.g., "07:30 - 08:10".

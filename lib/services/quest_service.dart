@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
@@ -5,17 +7,44 @@ import '../models/quest.dart';
 import '../models/quest_item.dart';
 import '../services/hive_service.dart';
 import '../services/home_widget_service.dart';
+import '../utils/app_clock.dart';
 
 class QuestService extends ChangeNotifier {
-  final Box<Quest> _box = HiveService.questsBox;
+  QuestService({Box<Quest>? box}) : _box = box ?? HiveService.questsBox {
+    // Reset yesterday's ticked sub-tasks once up front, then push the
+    // current state to the home-screen widget. Without this initial sync a
+    // freshly pinned quest widget showed "0 / 0" (or stale data) until the
+    // user happened to edit or complete a quest.
+    reconcileDay();
+    unawaited(_sync());
+  }
+
+  final Box<Quest> _box;
   static const _uuid = Uuid();
 
+  /// Pure read: no Hive writes happen here any more. Daily resets are done
+  /// explicitly by [reconcileDay] (startup, app resume, before mutations).
   List<Quest> get quests {
     final list = _box.values.toList();
-    for (final q in list) {
-      checkAndResetDailyItems(q);
-    }
     return list..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  /// Clears sub-task ticks left over from a previous day. Returns true if
+  /// anything changed.
+  bool reconcileDay() {
+    var changed = false;
+    for (final q in _box.values) {
+      if (checkAndResetDailyItems(q)) changed = true;
+    }
+    return changed;
+  }
+
+  /// Call when the app returns to the foreground: handles the day rolling
+  /// over while the app was in the background and refreshes the widget.
+  Future<void> refreshForNewDay() async {
+    final changed = reconcileDay();
+    if (changed) notifyListeners();
+    await _sync();
   }
 
   /// Quests that are scheduled for today and not completed today.
@@ -39,17 +68,15 @@ class QuestService extends ChangeNotifier {
   int get totalQuestsCount => quests.length;
 
   Quest? questById(String id) {
-    try {
-      final q = _box.values.firstWhere((q) => q.id == id);
-      checkAndResetDailyItems(q);
-      return q;
-    } catch (_) {
-      return null;
+    for (final q in _box.values) {
+      if (q.id == id) return q;
     }
+    return null;
   }
 
-  void checkAndResetDailyItems(Quest quest) {
-    final now = DateTime.now();
+  /// Returns true if the quest's sub-tasks were reset (and saved).
+  bool checkAndResetDailyItems(Quest quest) {
+    final now = AppClock.now();
     bool needsSave = false;
 
     if (!quest.isCompletedToday) {
@@ -79,8 +106,9 @@ class QuestService extends ChangeNotifier {
     }
 
     if (needsSave) {
-      quest.save();
+      unawaited(quest.save());
     }
+    return needsSave;
   }
 
   // ---------------------------------------------------------------------------
@@ -138,7 +166,7 @@ class QuestService extends ChangeNotifier {
     final quest = questById(questId);
     if (quest == null || quest.isCompletedToday) return;
 
-    final now = DateTime.now();
+    final now = AppClock.now();
 
     // Streak logic: if last completed was yesterday, continue streak
     final isConsecutive = quest.lastCompleted != null &&
@@ -169,7 +197,7 @@ class QuestService extends ChangeNotifier {
     if (index == -1) return;
 
     quest.items[index].isDone = !quest.items[index].isDone;
-    quest.lastItemToggleDate = DateTime.now();
+    quest.lastItemToggleDate = AppClock.now();
 
     // If all sub-tasks are done, auto-complete the quest today
     final allDone = quest.items.isNotEmpty && quest.items.every((i) => i.isDone);
@@ -212,4 +240,8 @@ class QuestService extends ChangeNotifier {
   Future<void> _sync() async {
     await HomeWidgetService.syncQuests(quests);
   }
+
+  /// Exposed for screens that want to force a widget refresh (e.g. right
+  /// before asking the launcher to pin a new widget).
+  Future<bool> syncWidget() => HomeWidgetService.syncQuests(quests);
 }

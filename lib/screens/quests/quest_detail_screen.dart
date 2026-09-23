@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/quest_service.dart';
-import '../../services/home_widget_service.dart';
+import '../../widgets/pin_quest_widget.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
@@ -208,17 +208,7 @@ class _QuestInfoPanel extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await HomeWidgetService.pinQuestWidget(quest);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Requested adding "${quest.title}" widget to Home Screen! 📲'),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-                      },
+                      onPressed: () => pinQuestWidgetWithFeedback(context, quest),
                       icon: const Icon(Icons.widgets_outlined, size: 18),
                       label: const Text('Add to Home Screen'),
                       style: OutlinedButton.styleFrom(
@@ -399,7 +389,9 @@ class _GoalRow extends StatelessWidget {
               ),
             ),
             Text(
-              '[${item.target}/${item.target} ${item.sets}]',
+              itemDone
+                  ? '${item.target}/${item.target}${item.sets > 1 ? ' × ${item.sets}' : ''}'
+                  : '0/${item.target}${item.sets > 1 ? ' × ${item.sets}' : ''}',
               style: AppTextStyles.caption.copyWith(
                 color: AppColors.textSecondary,
                 fontSize: 12,

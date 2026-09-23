@@ -101,6 +101,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Quest widget picker: today's quests or one specific quest. -->
+        <activity
+            android:name=".QuestWidgetConfigureActivity"
+            android:exported="true"
+            android:theme="@style/WidgetConfigureTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- Don't delete the meta-data below. This is used by the Flutter tool
              to generate GeneratedPluginRegistrant.java -->
         <meta-data

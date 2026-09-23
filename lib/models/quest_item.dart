@@ -35,6 +35,16 @@ class QuestItem extends HiveObject {
     this.isDone = false,
   });
 
-  /// Display string matching the screenshot format: [15/15 3]
-  String get progressLabel => '[$target/$target $sets]';
+  /// Human-readable target, e.g. "15 reps × 3" or "5 km".
+  String get targetLabel {
+    final base = '$target $unit'.trim();
+    return sets > 1 ? '$base × $sets' : base;
+  }
+
+  /// Progress for today, e.g. "0/15 × 3" before and "15/15 × 3" after.
+  /// (Previously always rendered as done: "[15/15 3]".)
+  String get progressLabel {
+    final done = isDone ? target : 0;
+    return sets > 1 ? '$done/$target × $sets' : '$done/$target';
+  }
 }

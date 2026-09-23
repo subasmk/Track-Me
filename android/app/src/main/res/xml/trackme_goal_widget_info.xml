@@ -26,6 +26,6 @@
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_goal"
-    android:configure="com.trackme.tracker.WidgetConfigureActivity"
+    android:configure="com.trackme.app.WidgetConfigureActivity"
     android:description="@string/goal_widget_label">
 </appwidget-provider>
