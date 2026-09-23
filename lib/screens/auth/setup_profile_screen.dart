@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -25,18 +26,61 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
   String? _photoPath;
   bool _isLoading = false;
 
+  /// Live username check: null = not checked yet / can't check.
+  bool? _available;
+  bool _checking = false;
+  String? _usernameError;
+  Timer? _debounce;
+
+  void _onUsernameChanged(String raw) {
+    final v = raw.trim().toLowerCase();
+    _debounce?.cancel();
+    setState(() {
+      _available = null;
+      _usernameError = v.isEmpty || SupabaseService.usernamePattern.hasMatch(v)
+          ? null
+          : '3-20 characters: letters, numbers, _ or .';
+      _checking = _usernameError == null && v.isNotEmpty;
+    });
+    if (!_checking) return;
+    _debounce = Timer(const Duration(milliseconds: 450), () async {
+      final ok = await context.read<SupabaseService>().isUsernameAvailable(v);
+      if (!mounted || _usernameController.text.trim().toLowerCase() != v) return;
+      setState(() {
+        _checking = false;
+        _available = ok;
+        if (ok == false) _usernameError = '@$v is taken';
+      });
+    });
+  }
+
+  Widget? _usernameStatus() {
+    if (_checking) {
+      return const Padding(
+          padding: EdgeInsets.all(12),
+          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)));
+    }
+    if (_available == true) return const Icon(Icons.check_circle, color: Color(0xFF4ADE80));
+    if (_available == false) return const Icon(Icons.cancel, color: Color(0xFFF87171));
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     final settings = context.read<SettingsService>();
-    _nameController = TextEditingController(text: settings.fullName);
-    _usernameController = TextEditingController(text: settings.userName);
+    _nameController = TextEditingController(
+        text: settings.fullName == 'Daily Tracker' ? '' : settings.fullName);
+    final existing = settings.userName.toLowerCase();
+    _usernameController = TextEditingController(
+        text: SupabaseService.usernamePattern.hasMatch(existing) && existing != 'learner' ? existing : '');
     _bioController = TextEditingController(text: settings.bio);
     _photoPath = settings.photoPath;
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _nameController.dispose();
     _usernameController.dispose();
     _bioController.dispose();
@@ -45,7 +89,8 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 512, maxHeight: 512, imageQuality: 85);
     if (picked != null) {
       setState(() => _photoPath = picked.path);
     }
@@ -53,15 +98,14 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
 
   Future<void> _saveAndContinue() async {
     final name = _nameController.text.trim();
-    final username = _usernameController.text.trim();
+    final username = _usernameController.text.trim().toLowerCase();
     final bio = _bioController.text.trim();
 
-    if (username.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a username.')),
-      );
+    if (!SupabaseService.usernamePattern.hasMatch(username)) {
+      setState(() => _usernameError = '3-20 characters: letters, numbers, _ or .');
       return;
     }
+    if (_available == false) return;
 
     setState(() => _isLoading = true);
 
@@ -69,21 +113,43 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
     final goalService = context.read<GoalService>();
     final questService = context.read<QuestService>();
     final supabase = context.read<SupabaseService>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final bool cloudOk;
+    try {
+      cloudOk = await supabase.saveMyProfile(
+        username: username,
+        fullName: name.isNotEmpty ? name : username,
+        bio: bio,
+        avatarPath: _photoPath,
+      );
+    } on UsernameTakenException {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _available = false;
+          _usernameError = '@$username is taken';
+        });
+      }
+      return;
+    }
 
     await settings.setUserName(username);
     await settings.updateProfile(
       fullName: name.isNotEmpty ? name : username,
-      bio: bio.isNotEmpty ? bio : 'Building consistency day by day 🔥',
+      bio: bio,
       photoPath: _photoPath,
     );
-
     goalService.setUserName(username);
-    supabase.updateUsername(username);
 
     await supabase.syncLocalProfileToCloud(
       goals: goalService.goals,
       quests: questService.quests,
     );
+    if (!cloudOk) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Saved on this phone. Couldn't reach the cloud, so friends can't find you yet.")));
+    }
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -164,10 +230,15 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
                       TextField(
                         controller: _usernameController,
                         style: AppTextStyles.body,
-                        decoration: const InputDecoration(
+                        autocorrect: false,
+                        onChanged: _onUsernameChanged,
+                        decoration: InputDecoration(
                           labelText: 'Username *',
                           hintText: 'alex_coder',
-                          prefixIcon: Icon(Icons.alternate_email),
+                          prefixIcon: const Icon(Icons.alternate_email),
+                          suffixIcon: _usernameStatus(),
+                          errorText: _usernameError,
+                          helperText: _available == true ? 'Available' : 'Unique. Friends find you by this.',
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),
@@ -209,7 +280,7 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: _isLoading ? null : _saveAndContinue,
+                  onPressed: _isLoading || _checking || _available == false ? null : _saveAndContinue,
                   child: _isLoading
                       ? const SizedBox(
                           width: 20,

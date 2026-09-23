@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -60,8 +61,10 @@ class SupabaseService extends ChangeNotifier {
       // authRedirectUrl and supabase_flutter exchanges it for a session.
       // Re-render so the app leaves the auth screen right away.
       _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+        refreshProfileStatus();
         notifyListeners();
       });
+      await refreshProfileStatus();
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
@@ -108,6 +111,108 @@ class SupabaseService extends ChangeNotifier {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Per-user profile (multi-user). Table + RLS: supabase/schema.sql
+  // ---------------------------------------------------------------------
+
+  static final usernamePattern = RegExp(r'^[a-z0-9_.]{3,20}$');
+
+  /// Whether the signed-in user has finished profile setup. Remembered per
+  /// user id on this phone, and confirmed against the cloud on sign-in.
+  bool get profileComplete {
+    final uid = currentUser?.id;
+    if (uid == null) return false;
+    return HiveService.settingsBox.get('profile_done_$uid') == true;
+  }
+
+  Future<void> _markProfileComplete() async {
+    final uid = currentUser?.id;
+    if (uid == null) return;
+    await HiveService.settingsBox.put('profile_done_$uid', true);
+    notifyListeners();
+  }
+
+  /// Marks setup done if a cloud profile already exists for this user
+  /// (e.g. signing in on a new phone).
+  Future<void> refreshProfileStatus() async {
+    final uid = currentUser?.id;
+    if (uid == null || profileComplete) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('username')
+          .eq('id', uid)
+          .maybeSingle();
+      if (row != null) {
+        _currentUsername = row['username'] as String;
+        await _markProfileComplete();
+      }
+    } catch (e) {
+      debugPrint('profile status check failed: $e');
+    }
+  }
+
+  /// true = free, false = taken, null = could not check (offline or the
+  /// cloud tables are not set up yet).
+  Future<bool?> isUsernameAvailable(String username) async {
+    if (!_clientReady) return null;
+    try {
+      final res = await Supabase.instance.client
+          .rpc('username_available', params: {'name': username.toLowerCase()});
+      return res as bool;
+    } catch (e) {
+      debugPrint('username check failed: $e');
+      return null;
+    }
+  }
+
+  /// Creates or updates the signed-in user's cloud profile. Throws
+  /// [UsernameTakenException] when someone else already has the username.
+  /// Returns false if the cloud isn't reachable/set up (saved locally only).
+  Future<bool> saveMyProfile({
+    required String username,
+    required String fullName,
+    required String bio,
+    String? avatarPath,
+  }) async {
+    final uid = currentUser?.id;
+    var cloudOk = false;
+    if (_clientReady && uid != null) {
+      try {
+        String? avatarUrl;
+        if (avatarPath != null && !avatarPath.startsWith('http')) {
+          final file = File(avatarPath);
+          if (await file.exists()) {
+            final path = '$uid/avatar.jpg';
+            await Supabase.instance.client.storage.from('avatars').upload(
+                path, file,
+                fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'));
+            avatarUrl =
+                '${Supabase.instance.client.storage.from('avatars').getPublicUrl(path)}?v=${DateTime.now().millisecondsSinceEpoch}';
+          }
+        }
+        await Supabase.instance.client.from('profiles').upsert({
+          'id': uid,
+          'username': username.toLowerCase(),
+          'full_name': fullName,
+          'bio': bio,
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        cloudOk = true;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505') throw UsernameTakenException();
+        debugPrint('saveMyProfile: $e');
+      } catch (e) {
+        debugPrint('saveMyProfile: $e');
+      }
+    }
+    _currentUsername = username.toLowerCase();
+    _saveLocalState();
+    await _markProfileComplete();
+    return cloudOk;
   }
 
   @override
@@ -182,7 +287,8 @@ class SupabaseService extends ChangeNotifier {
       ));
     }
 
-    final userId = currentUser?.id ?? 'user_${_currentUsername.toLowerCase().replaceAll(' ', '_')}';
+    final userId = currentUser?.id;
+    if (userId == null || !profileComplete) return;
 
     final profile = PublicProfile(
       id: userId,
@@ -197,7 +303,10 @@ class SupabaseService extends ChangeNotifier {
 
     if (_clientReady) {
       try {
-        await Supabase.instance.client.from('profiles').upsert(profile.toJson());
+        final data = profile.toJson()
+          ..remove('id')
+          ..remove('username');
+        await Supabase.instance.client.from('profiles').update(data).eq('id', userId);
       } catch (e) {
         debugPrint('Supabase cloud sync error: $e');
       }
@@ -328,3 +437,5 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 }
+
+class UsernameTakenException implements Exception {}

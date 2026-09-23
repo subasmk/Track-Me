@@ -12,6 +12,7 @@ import 'services/settings_service.dart';
 import 'services/progression_service.dart';
 import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
+import 'screens/auth/setup_profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/goal_detail/goal_detail_screen.dart';
@@ -170,7 +171,10 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
           builder: (context) {
             final supabase = context.watch<SupabaseService>();
             if (supabase.isLoggedIn) {
-              return const HomeScreen();
+              // New accounts pick a unique username, name, bio and photo first.
+              return supabase.profileComplete
+                  ? const HomeScreen()
+                  : const SetupProfileScreen();
             }
             return const AuthScreen();
           },

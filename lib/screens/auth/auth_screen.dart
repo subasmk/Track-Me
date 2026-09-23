@@ -5,7 +5,6 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
-import 'setup_profile_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -70,21 +69,12 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
             );
-          } else if (res?.session != null) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const SetupProfileScreen()),
-            );
+          // With a session, the app's root switches to profile setup by itself.
           }
         }
       } else {
-        final res = await supabase.signIn(email: email, password: password);
-        if (mounted && res?.session != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const SetupProfileScreen()),
-          );
-        }
+        // On success the app's root switches to setup or Home by itself.
+        await supabase.signIn(email: email, password: password);
       }
     } on AuthException catch (e) {
       if (mounted) {
