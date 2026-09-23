@@ -14,6 +14,8 @@ import 'package:provider/provider.dart';
 import 'package:trackme/models/quest.dart';
 import 'package:trackme/models/quest_item.dart';
 import 'package:trackme/screens/quests/focus_timer_screen.dart';
+import 'package:trackme/screens/quests/add_quest_screen.dart';
+import 'package:trackme/screens/quests/quest_analytics_screen.dart';
 import 'package:trackme/screens/quests/quest_detail_screen.dart';
 import 'package:trackme/screens/quests/quests_screen.dart';
 import 'package:trackme/services/progression_service.dart';
@@ -82,6 +84,7 @@ void main() {
       gold: 75,
       focusStats: 'STR/AGI',
       focusMinutes: 340,
+      createdAt: now.subtract(const Duration(days: 60)),
       completionHistory: List.generate(34, (i) => now.subtract(Duration(days: i + 1))),
       lastItemToggleDate: now,
       items: [
@@ -114,7 +117,9 @@ void main() {
       type: 'Mindfulness',
       difficulty: 'Easy',
       streak: 30,
+      longestStreak: 30,
       xp: 75,
+      createdAt: now.subtract(const Duration(days: 60)),
       lastCompleted: now.subtract(const Duration(hours: 2)),
     ));
     await put(Quest(
@@ -165,5 +170,7 @@ void main() {
   testWidgets('quest detail', (t) => shoot(t, const QuestDetailScreen(questId: 'workout'), 'quest_detail'));
   testWidgets('quest detail done',
       (t) => shoot(t, const QuestDetailScreen(questId: 'meditate'), 'quest_detail_done'));
+  testWidgets('analytics', (t) => shoot(t, const QuestAnalyticsScreen(), 'quest_analytics'));
+  testWidgets('new quest', (t) => shoot(t, const AddQuestScreen(), 'add_quest'));
   testWidgets('focus timer', (t) => shoot(t, const FocusTimerScreen(questId: 'study'), 'focus_timer'));
 }

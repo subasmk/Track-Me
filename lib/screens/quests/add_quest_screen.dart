@@ -7,6 +7,7 @@ import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
 import '../../models/quest_item.dart';
+import '../../models/quest_templates.dart';
 
 class AddQuestScreen extends StatefulWidget {
   final Quest? existingQuest;
@@ -58,8 +59,54 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
             target: i.target,
             sets: i.sets,
             unit: i.unit,
+            isDone: i.isDone, // keep today's ticks when editing
           )));
     }
+  }
+
+  void _applyTemplate(QuestTemplate t) {
+    setState(() {
+      _titleController.text = t.title;
+      _emoji = t.emoji;
+      _type = t.type;
+      _difficulty = t.difficulty;
+      _startTime = t.startTime;
+      _endTime = t.endTime;
+      _targetDays = List<int>.from(t.days);
+      _items
+        ..clear()
+        ..addAll(t.buildItems(() => _uuid.v4()));
+    });
+  }
+
+  Widget _templateStrip() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('START FROM A TEMPLATE',
+            style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: questTemplates.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              final t = questTemplates[i];
+              return ActionChip(
+                avatar: Text(t.emoji),
+                label: Text(t.title),
+                onPressed: () => _applyTemplate(t),
+                backgroundColor: AppColors.surface,
+                side: const BorderSide(color: AppColors.surfaceBorder),
+              );
+            },
+          ),
+        ),
+      ]),
+    );
   }
 
   @override
@@ -270,6 +317,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
+            if (!_isEditing) _templateStrip(),
             // Emoji picker
             Center(
               child: GestureDetector(

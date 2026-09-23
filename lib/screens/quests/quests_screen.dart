@@ -12,6 +12,7 @@ import '../../widgets/quest_ui.dart';
 import '../../widgets/sloth_sticker.dart';
 import 'quest_detail_screen.dart';
 import 'add_quest_screen.dart';
+import 'quest_analytics_screen.dart';
 
 class QuestsScreen extends StatefulWidget {
   const QuestsScreen({super.key});
@@ -39,6 +40,12 @@ class _QuestsScreenState extends State<QuestsScreen> {
         leading: const BackButton(),
         title: const Text('Quests'),
         actions: [
+          IconButton(
+            tooltip: 'Stats',
+            icon: const Icon(Icons.insights_outlined),
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const QuestAnalyticsScreen())),
+          ),
           IconButton(
             tooltip: 'Add widget to home screen',
             icon: const Icon(Icons.widgets_outlined),
