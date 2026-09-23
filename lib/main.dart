@@ -9,6 +9,7 @@ import 'services/hive_service.dart';
 import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
+import 'services/progression_service.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
@@ -49,6 +50,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
 
   late final GoalService _goalService;
   late final QuestService _questService;
+  late final ProgressionService _progression;
   late final SettingsService _settingsService;
   late final SupabaseService _supabaseService;
   StreamSubscription<Uri?>? _widgetClickSub;
@@ -58,7 +60,8 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _goalService = GoalService();
-    _questService = QuestService();
+    _progression = ProgressionService(HiveService.settingsBox);
+    _questService = QuestService(progression: _progression);
     _settingsService = SettingsService();
     _supabaseService = SupabaseService();
 
@@ -137,6 +140,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     _questService.removeListener(_onDataChanged);
     _goalService.dispose();
     _questService.dispose();
+    _progression.dispose();
     _settingsService.dispose();
     _supabaseService.dispose();
     super.dispose();
@@ -148,6 +152,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
       providers: [
         ChangeNotifierProvider<GoalService>.value(value: _goalService),
         ChangeNotifierProvider<QuestService>.value(value: _questService),
+        ChangeNotifierProvider<ProgressionService>.value(value: _progression),
         ChangeNotifierProvider<SettingsService>.value(value: _settingsService),
         ChangeNotifierProvider<SupabaseService>.value(value: _supabaseService),
       ],

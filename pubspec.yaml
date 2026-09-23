@@ -67,6 +67,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/mascot/
   # No bundled image/font assets: the sloth mascot and all iconography are
   # drawn in code (CustomPainter + Material/emoji glyphs) so the app builds
   # and runs with zero missing-asset risk.

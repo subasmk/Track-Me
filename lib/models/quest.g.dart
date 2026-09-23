@@ -34,13 +34,16 @@ class QuestAdapter extends TypeAdapter<Quest> {
       createdAt: fields[14] as DateTime?,
       targetDays: (fields[15] as List?)?.cast<int>(),
       lastItemToggleDate: fields[16] as DateTime?,
+      completionHistory: (fields[17] as List?)?.cast<DateTime>(),
+      reminderTime: fields[18] as String?,
+      focusMinutes: fields[19] as int? ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, Quest obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(20)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -74,7 +77,13 @@ class QuestAdapter extends TypeAdapter<Quest> {
       ..writeByte(15)
       ..write(obj.targetDays)
       ..writeByte(16)
-      ..write(obj.lastItemToggleDate);
+      ..write(obj.lastItemToggleDate)
+      ..writeByte(17)
+      ..write(obj.completionHistory)
+      ..writeByte(18)
+      ..write(obj.reminderTime)
+      ..writeByte(19)
+      ..write(obj.focusMinutes);
   }
 
   @override

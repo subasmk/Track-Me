@@ -72,6 +72,19 @@ class Quest extends HiveObject {
   @HiveField(16)
   DateTime? lastItemToggleDate;
 
+  /// Every day this quest was completed (one entry per day). Drives
+  /// analytics and the history heatmap. Older quests start empty.
+  @HiveField(17)
+  List<DateTime> completionHistory;
+
+  /// Optional daily reminder time, "HH:mm".
+  @HiveField(18)
+  String? reminderTime;
+
+  /// Total minutes logged with the focus timer.
+  @HiveField(19)
+  int focusMinutes;
+
   Quest({
     required this.id,
     required this.title,
@@ -90,7 +103,11 @@ class Quest extends HiveObject {
     DateTime? createdAt,
     List<int>? targetDays,
     this.lastItemToggleDate,
+    List<DateTime>? completionHistory,
+    this.reminderTime,
+    this.focusMinutes = 0,
   })  : items = items ?? <QuestItem>[],
+        completionHistory = completionHistory ?? <DateTime>[],
         createdAt = createdAt ?? DateTime.now(),
         targetDays = targetDays ?? const [1, 2, 3, 4, 5, 6, 7];
 

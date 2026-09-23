@@ -8,9 +8,10 @@ import '../models/quest_item.dart';
 import '../services/hive_service.dart';
 import '../services/home_widget_service.dart';
 import '../utils/app_clock.dart';
+import 'progression_service.dart';
 
 class QuestService extends ChangeNotifier {
-  QuestService({Box<Quest>? box}) : _box = box ?? HiveService.questsBox {
+  QuestService({Box<Quest>? box, this.progression}) : _box = box ?? HiveService.questsBox {
     // Reset yesterday's ticked sub-tasks once up front, then push the
     // current state to the home-screen widget. Without this initial sync a
     // freshly pinned quest widget showed "0 / 0" (or stale data) until the
@@ -20,7 +21,17 @@ class QuestService extends ChangeNotifier {
   }
 
   final Box<Quest> _box;
+  final ProgressionService? progression;
   static const _uuid = Uuid();
+
+  /// Set when the most recent completion crossed into a new level, so the
+  /// UI can celebrate. Read and clear with [takeLevelUp].
+  bool _pendingLevelUp = false;
+  bool takeLevelUp() {
+    final v = _pendingLevelUp;
+    _pendingLevelUp = false;
+    return v;
+  }
 
   /// Pure read: no Hive writes happen here any more. Daily resets are done
   /// explicitly by [reconcileDay] (startup, app resume, before mutations).
@@ -181,6 +192,14 @@ class QuestService extends ChangeNotifier {
     for (final item in quest.items) {
       item.isDone = true;
     }
+    quest.completionHistory = [
+      ...quest.completionHistory.where((d) => !AppClock.isSameDay(d, now)),
+      now,
+    ];
+
+    if (progression != null) {
+      _pendingLevelUp = await progression!.award(xp: quest.xp, gold: quest.gold);
+    }
 
     await quest.save();
     await _sync();
@@ -208,6 +227,23 @@ class QuestService extends ChangeNotifier {
       await _sync();
       notifyListeners();
     }
+  }
+
+  /// Adds focus-timer minutes to a quest.
+  Future<void> logFocusMinutes(String questId, int minutes) async {
+    final quest = questById(questId);
+    if (quest == null || minutes <= 0) return;
+    quest.focusMinutes += minutes;
+    await quest.save();
+    notifyListeners();
+  }
+
+  Future<void> setReminder(String questId, String? time) async {
+    final quest = questById(questId);
+    if (quest == null) return;
+    quest.reminderTime = time;
+    await quest.save();
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
