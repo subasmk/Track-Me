@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -56,6 +57,26 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
         private const val KEY_PENDING_PIN_ID = "quest_pending_pin_id"
         private const val KEY_PENDING_PIN_AT = "quest_pending_pin_at"
         private const val PENDING_PIN_TTL_MS = 5 * 60 * 1000L
+        /** Width (dp) from which the 4x2 layout extras are shown. */
+        private const val WIDE_WIDTH_DP = 220
+
+        private fun hour() = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+
+        /** Sloth mood for the widget, mirroring stickerFor() in the app. */
+        internal fun mascotFor(progress: Int, allDone: Boolean, hour: Int, type: String?): Int = when {
+            allDone -> R.drawable.sloth_cheering
+            hour >= 22 || hour < 5 -> R.drawable.sloth_sleepy
+            progress > 0 && type == "Fitness" -> R.drawable.sloth_fitness
+            progress > 0 && type == "Mindfulness" -> R.drawable.sloth_calm
+            progress > 0 -> R.drawable.sloth_focused
+            hour >= 19 -> R.drawable.sloth_worried
+            else -> R.drawable.sloth_ready
+        }
+
+        private fun setChip(views: RemoteViews, id: Int, text: String) {
+            views.setTextViewText(id, text)
+            if (text.isEmpty()) views.setViewVisibility(id, View.GONE)
+        }
 
         fun updateQuestWidget(
             context: Context,
@@ -69,6 +90,17 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
             val quest = if (binding != QuestWidgetConfig.TODAY) {
                 findQuest(widgetData.getString(KEY_ALL_JSON, null), binding)
             } else null
+
+            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+            val widthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
+            val wide = widthDp >= WIDE_WIDTH_DP
+            views.setViewVisibility(R.id.quest_next, if (wide) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.quest_difficulty, if (wide) View.VISIBLE else View.GONE)
+
+            // setChip may hide empty chips; show them again before rendering.
+            views.setViewVisibility(R.id.quest_streak, View.VISIBLE)
+            if (!wide) views.setViewVisibility(R.id.quest_difficulty, View.GONE)
+            else views.setViewVisibility(R.id.quest_difficulty, View.VISIBLE)
 
             if (quest != null) {
                 renderSingleQuest(views, quest)
@@ -105,46 +137,78 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
             val completed = widgetData.getInt(KEY_COMPLETED_COUNT, 0)
             val total = widgetData.getInt(KEY_TOTAL_COUNT, 0)
             val today = parse(widgetData.getString(KEY_TODAY_JSON, null))
+            views.setTextViewText(R.id.quest_header, "⚔️  TODAY'S QUESTS")
+            views.setInt(R.id.quest_widget_root, "setBackgroundResource", R.drawable.bg_widget_quest)
 
             if (total == 0) {
-                views.setTextViewText(R.id.quest_summary, "No quests today")
-                views.setTextViewText(R.id.quest_title, "Tap to plan a quest")
-                views.setTextViewText(R.id.quest_streak, "")
-                views.setTextViewText(R.id.quest_difficulty, "")
+                views.setTextViewText(R.id.quest_summary, "Rest day")
+                views.setProgressBar(R.id.quest_progress, 100, 0, false)
+                views.setTextViewText(R.id.quest_title, "No quests today. Tap to plan one.")
+                views.setTextViewText(R.id.quest_next, "")
+                setChip(views, R.id.quest_streak, "")
+                setChip(views, R.id.quest_difficulty, "")
+                views.setImageViewResource(R.id.quest_mascot, if (hour() >= 22 || hour() < 5) R.drawable.sloth_sleepy else R.drawable.sloth_calm)
                 return
             }
-            views.setTextViewText(R.id.quest_summary, "$completed / $total done today")
+            val percent = completed * 100 / total
+            val allDone = completed >= total
+            views.setTextViewText(R.id.quest_summary, "$completed / $total")
+            views.setProgressBar(R.id.quest_progress, 100, percent, false)
             val next = (0 until today.length()).map { today.getJSONObject(it) }
                 .firstOrNull { !it.optBoolean("completedToday", false) }
-            if (next == null) {
-                views.setTextViewText(R.id.quest_title, "All quests complete!")
-                views.setTextViewText(R.id.quest_streak, "")
-                views.setTextViewText(R.id.quest_difficulty, "")
+            val best = widgetData.getInt("quest_best_streak", 0)
+            if (next == null || allDone) {
+                views.setInt(R.id.quest_widget_root, "setBackgroundResource", R.drawable.bg_widget_quest_done)
+                views.setTextViewText(R.id.quest_title, "All quests done! 🎉")
+                views.setTextViewText(R.id.quest_next, "Streaks are safe for today")
+                setChip(views, R.id.quest_streak, if (best > 0) "🔥 $best best" else "")
+                setChip(views, R.id.quest_difficulty, "")
+                views.setImageViewResource(R.id.quest_mascot, R.drawable.sloth_cheering)
             } else {
+                val time = next.optString("timeRange", "")
                 views.setTextViewText(R.id.quest_title, "${next.optString("emoji", "⚔️")} ${next.optString("title", "Quest")}")
+                val task = next.optString("nextTask", "")
+                views.setTextViewText(R.id.quest_next, listOf(if (task.isNotEmpty()) "Next: $task" else "", time).filter { it.isNotEmpty() }.joinToString("  ·  "))
                 val streak = next.optInt("streak", 0)
-                views.setTextViewText(R.id.quest_streak, if (streak > 0) "🔥 $streak day streak" else "")
-                views.setTextViewText(R.id.quest_difficulty, next.optString("difficulty", ""))
+                setChip(views, R.id.quest_streak, if (streak > 0) "🔥 $streak" else "")
+                setChip(views, R.id.quest_difficulty, "+${next.optInt("xp", 0)} XP")
+                views.setImageViewResource(R.id.quest_mascot, mascotFor(percent, false, hour(), next.optString("type")))
             }
         }
 
         private fun renderSingleQuest(views: RemoteViews, quest: JSONObject) {
             val done = quest.optBoolean("completedToday", false)
+            val scheduled = quest.optBoolean("scheduledToday", true)
             val count = quest.optInt("itemCount", 0)
             val itemsDone = quest.optInt("itemsDone", 0)
+            val progress = quest.optInt("progress", 0)
+            views.setTextViewText(R.id.quest_header, "${quest.optString("emoji", "⚔️")}  ${quest.optString("title", "Quest").uppercase()}")
+            views.setInt(R.id.quest_widget_root, "setBackgroundResource", if (done) R.drawable.bg_widget_quest_done else R.drawable.bg_widget_quest)
             views.setTextViewText(
                 R.id.quest_summary,
                 when {
-                    done -> "Done today ✓"
-                    !quest.optBoolean("scheduledToday", true) -> "Rest day"
-                    count > 0 -> "$itemsDone / $count tasks"
-                    else -> "Not done yet"
+                    done -> "Done ✓"
+                    !scheduled -> "Rest day"
+                    count > 0 -> "$itemsDone / $count"
+                    else -> "To do"
                 }
             )
-            views.setTextViewText(R.id.quest_title, "${quest.optString("emoji", "⚔️")} ${quest.optString("title", "Quest")}")
+            views.setProgressBar(R.id.quest_progress, 100, progress, false)
+            val task = quest.optString("nextTask", "")
+            views.setTextViewText(
+                R.id.quest_title,
+                when {
+                    done -> "Nice work! See you tomorrow."
+                    !scheduled -> "Scheduled ${quest.optString("days", "")}"
+                    task.isNotEmpty() -> "Next: $task"
+                    else -> "Tap to start"
+                }
+            )
+            views.setTextViewText(R.id.quest_next, quest.optString("timeRange", ""))
             val streak = quest.optInt("streak", 0)
-            views.setTextViewText(R.id.quest_streak, if (streak > 0) "🔥 $streak day streak" else "")
-            views.setTextViewText(R.id.quest_difficulty, quest.optString("difficulty", ""))
+            setChip(views, R.id.quest_streak, if (streak > 0) "🔥 $streak" else "")
+            setChip(views, R.id.quest_difficulty, quest.optString("difficulty", ""))
+            views.setImageViewResource(R.id.quest_mascot, mascotFor(progress, done, hour(), quest.optString("type")))
         }
 
         private fun launch(context: Context, uri: String) =
