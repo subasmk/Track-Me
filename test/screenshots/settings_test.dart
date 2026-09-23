@@ -22,6 +22,7 @@ import 'package:trackme/services/quest_service.dart';
 import 'package:trackme/services/settings_service.dart';
 import 'package:trackme/services/supabase_service.dart';
 import 'package:trackme/theme/app_theme.dart';
+import 'package:trackme/widgets/duo_widget_preview.dart';
 
 Future<void> _loadFont(String family, List<String> paths) async {
   final loader = FontLoader(family);
@@ -75,7 +76,7 @@ void main() {
         child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: AppTheme.dark,
-            home: const SettingsScreen(checkCloud: false)),
+            home: const SettingsScreen(checkCloud: false, previewUrgency: DuoUrgency.forgot)),
       );
     });
     await tester.pumpWidget(app);

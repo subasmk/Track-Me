@@ -57,6 +57,11 @@
           below, so a user can add several of these side by side — one per
           goal — exactly like separate Duolingo streak widgets.
         -->
+        <!-- Widget check button (tap-to-check-off without opening the app). -->
+        <receiver
+            android:name=".WidgetCheckOffReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".TrackMeGoalWidgetProvider"
             android:exported="true">

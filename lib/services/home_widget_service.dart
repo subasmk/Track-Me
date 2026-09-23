@@ -50,6 +50,9 @@ class HomeWidgetService {
                 'week': week
                     .map((d) => g.notes.any((n) => DateUtilsX.isSameDay(n.date, d)))
                     .toList(),
+                'last5': last5Days(today)
+                    .map((d) => g.notes.any((n) => DateUtilsX.isSameDay(n.date, d)))
+                    .toList(),
               })
           .toList();
 
@@ -115,6 +118,9 @@ class HomeWidgetService {
           'nextTask': q.nextItem?.name ?? '',
           'timeRange': q.timeRange ?? '',
           'days': q.daysLabel,
+          'last5': last5Days(DateTime.now())
+              .map((d) => q.completionHistory.any((c) => DateUtilsX.isSameDay(c, d)))
+              .toList(),
         };
 
     final bestStreak = quests.fold<int>(0, (m, q) => q.streak > m ? q.streak : m);
@@ -158,6 +164,75 @@ class HomeWidgetService {
   /// stored here (valid for a few minutes), so "Add to Home Screen" on a
   /// quest now really adds *that* quest. Returns what actually happened so
   /// the UI no longer claims success when pinning is unsupported or fails.
+  static const String keyGoalPendingPinId = 'goal_pending_pin_id';
+  static const String keyGoalPendingPinAt = 'goal_pending_pin_at';
+  static const String keyWidgetStyle = 'widget_style';
+  static const String keyWidgetBgPath = 'widget_bg_path';
+  static const String keyPendingCheckOffs = 'pending_checkoffs';
+
+  /// Pins a goal widget bound to [goalId] (or the first goal).
+  static Future<PinWidgetResult> pinGoalWidget(String? goalId) async {
+    try {
+      final supported = await HomeWidget.isRequestPinWidgetSupported();
+      if (supported != true) return PinWidgetResult.unsupported;
+      await Future.wait([
+        HomeWidget.saveWidgetData<String>(keyGoalPendingPinId, goalId ?? ''),
+        HomeWidget.saveWidgetData<String>(
+            keyGoalPendingPinAt, DateTime.now().millisecondsSinceEpoch.toString()),
+      ]);
+      await HomeWidget.requestPinWidget(androidName: androidGoalWidgetProvider);
+      return PinWidgetResult.requested;
+    } catch (e) {
+      debugPrint('HomeWidgetService.pinGoalWidget failed: $e');
+      return PinWidgetResult.failed;
+    }
+  }
+
+  /// Widget look: [style] is 'auto' (urgency colors) or a theme id;
+  /// [bgPath] is a custom background photo on this phone (null = none).
+  static Future<void> saveWidgetStyle({required String style, String? bgPath}) async {
+    try {
+      await Future.wait([
+        HomeWidget.saveWidgetData<String>(keyWidgetStyle, style),
+        HomeWidget.saveWidgetData<String>(keyWidgetBgPath, bgPath),
+      ]);
+      await Future.wait([
+        HomeWidget.updateWidget(androidName: androidGoalWidgetProvider),
+        HomeWidget.updateWidget(androidName: androidQuestWidgetProvider),
+      ]);
+    } catch (e) {
+      debugPrint('HomeWidgetService.saveWidgetStyle failed: $e');
+    }
+  }
+
+  /// Check-offs tapped on a widget while the app was closed, as
+  /// (kind, id) pairs for today. Clears the queue.
+  static Future<List<({String kind, String id})>> takePendingCheckOffs() async {
+    try {
+      final raw = await HomeWidget.getWidgetData<String>(keyPendingCheckOffs);
+      if (raw == null || raw.isEmpty || raw == '[]') return [];
+      await HomeWidget.saveWidgetData<String>(keyPendingCheckOffs, '[]');
+      return parseCheckOffs(raw, DateTime.now());
+    } catch (e) {
+      debugPrint('HomeWidgetService.takePendingCheckOffs failed: $e');
+      return [];
+    }
+  }
+
+  /// Parses "kind|id|yyyy-MM-dd" entries, keeping only [now]'s date.
+  static List<({String kind, String id})> parseCheckOffs(String raw, DateTime now) {
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final out = <({String kind, String id})>[];
+    for (final e in (jsonDecode(raw) as List).cast<String>()) {
+      final parts = e.split('|');
+      if (parts.length == 3 && parts[2] == today && (parts[0] == 'goal' || parts[0] == 'quest')) {
+        out.add((kind: parts[0], id: parts[1]));
+      }
+    }
+    return out;
+  }
+
   static Future<PinWidgetResult> pinQuestWidget(Quest? quest) async {
     try {
       final supported = await HomeWidget.isRequestPinWidgetSupported();
@@ -178,3 +253,9 @@ class HomeWidgetService {
 }
 
 enum PinWidgetResult { requested, unsupported, failed }
+
+/// The 5 days ending today, oldest first (the widget's check strip).
+List<DateTime> last5Days(DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  return [for (var i = 4; i >= 0; i--) today.subtract(Duration(days: i))];
+}

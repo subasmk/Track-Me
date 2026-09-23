@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:home_widget/home_widget.dart';
 
 import 'services/hive_service.dart';
+import 'services/home_widget_service.dart';
 import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
@@ -80,6 +81,10 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     _goalService.addListener(_onDataChanged);
     _questService.addListener(_onDataChanged);
 
+    _applyWidgetCheckOffs();
+    HomeWidgetService.saveWidgetStyle(
+        style: _settingsService.widgetStyle, bgPath: _settingsService.widgetBgPath);
+
     // Tapping a goal's home-screen widget should open that goal directly.
     _handleInitialWidgetLaunch();
     _widgetClickSub = HomeWidget.widgetClicked.listen(_handleWidgetUri);
@@ -91,7 +96,24 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     // reset yesterday's sub-task ticks and refresh the home-screen widget.
     if (state == AppLifecycleState.resumed) {
       _questService.refreshForNewDay();
+      _applyWidgetCheckOffs();
     }
+  }
+
+  /// Applies check-offs made from the widget's check button.
+  Future<void> _applyWidgetCheckOffs() async {
+    final items = await HomeWidgetService.takePendingCheckOffs();
+    for (final item in items) {
+      if (item.kind == 'quest') {
+        await _questService.completeToday(item.id);
+      } else {
+        final goal = _goalService.goalById(item.id);
+        if (goal != null && !goal.isCompletedToday) {
+          await _goalService.completeToday(goal, 'Checked off from the home screen widget');
+        }
+      }
+    }
+    if (items.isNotEmpty) await _questService.syncWidget();
   }
 
   void _onSettingsChanged() {

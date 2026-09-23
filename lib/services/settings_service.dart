@@ -20,6 +20,8 @@ class SettingsService extends ChangeNotifier {
   static const String keyReduceMotion = 'reduce_motion';
   static const String keyDiscoverable = 'discoverable';
   static const String keyShareQuests = 'share_quests_on_profile';
+  static const String keyWidgetStyle = 'widget_style';
+  static const String keyWidgetBgPath = 'widget_bg_path';
 
   String _userName = 'Learner';
   String _fullName = 'Daily Tracker';
@@ -32,6 +34,8 @@ class SettingsService extends ChangeNotifier {
   bool _reduceMotion = false;
   bool _discoverable = true;
   bool _shareQuests = true;
+  String _widgetStyle = 'auto';
+  String? _widgetBgPath;
 
   String get userName => _userName;
   String get fullName => _fullName;
@@ -44,6 +48,9 @@ class SettingsService extends ChangeNotifier {
   bool get reduceMotion => _reduceMotion;
   bool get discoverable => _discoverable;
   bool get shareQuests => _shareQuests;
+  /// 'auto' = Duolingo-style urgency colors, otherwise a WidgetTheme id.
+  String get widgetStyle => _widgetStyle;
+  String? get widgetBgPath => _widgetBgPath;
 
   SettingsService() {
     _load();
@@ -62,6 +69,8 @@ class SettingsService extends ChangeNotifier {
     _reduceMotion = (box.get(keyReduceMotion) as bool?) ?? false;
     _discoverable = (box.get(keyDiscoverable) as bool?) ?? true;
     _shareQuests = (box.get(keyShareQuests) as bool?) ?? true;
+    _widgetStyle = (box.get(keyWidgetStyle) as String?) ?? 'auto';
+    _widgetBgPath = box.get(keyWidgetBgPath) as String?;
   }
 
   Future<void> _put(String key, Object value) async {
@@ -92,6 +101,21 @@ class SettingsService extends ChangeNotifier {
   Future<void> setDiscoverable(bool v) {
     _discoverable = v;
     return _put(keyDiscoverable, v);
+  }
+
+  Future<void> setWidgetStyle(String style) {
+    _widgetStyle = style;
+    return _put(keyWidgetStyle, style);
+  }
+
+  Future<void> setWidgetBackground(String? path) async {
+    _widgetBgPath = path;
+    if (path == null) {
+      await HiveService.settingsBox.delete(keyWidgetBgPath);
+      notifyListeners();
+    } else {
+      await _put(keyWidgetBgPath, path);
+    }
   }
 
   Future<void> setShareQuests(bool v) {

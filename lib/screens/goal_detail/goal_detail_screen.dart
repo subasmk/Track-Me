@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../widgets/pin_quest_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/goal.dart';
 import '../../services/goal_service.dart';
@@ -220,6 +221,11 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
         leading: const BackButton(),
         title: Text(goal.title),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_to_home_screen),
+            tooltip: 'Add to home screen',
+            onPressed: () => pinGoalWidgetWithFeedback(context, goal.id, goal.title),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             color: AppColors.surfaceLight,

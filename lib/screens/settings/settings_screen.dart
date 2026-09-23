@@ -1,15 +1,19 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/backup_service.dart';
 import '../../services/goal_service.dart';
+import '../../services/home_widget_service.dart';
 import '../../services/quest_service.dart';
 import '../../services/reminder_service.dart';
 import '../../services/settings_service.dart';
 import '../../services/supabase_service.dart';
+import '../../theme/widget_themes.dart';
+import '../../widgets/duo_widget_preview.dart';
 import '../../widgets/edit_profile_sheet.dart';
 import '../../widgets/pin_quest_widget.dart';
 import '../../widgets/system_ui.dart';
@@ -20,7 +24,9 @@ const _repoUrl = 'https://github.com/subasmk/Track-Me';
 class SettingsScreen extends StatefulWidget {
   /// Skips the live cloud check (used by screenshot tests).
   final bool checkCloud;
-  const SettingsScreen({super.key, this.checkCloud = true});
+  /// Screenshot tests only: the widget preview's time-of-day state.
+  final DuoUrgency? previewUrgency;
+  const SettingsScreen({super.key, this.checkCloud = true, this.previewUrgency});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -147,6 +153,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ---------- widgets ----------
 
+  Future<void> _pickWidgetBackground() async {
+    final settings = context.read<SettingsService>();
+    final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1080, maxHeight: 1080, imageQuality: 85);
+    if (picked == null) return;
+    final kept = await keepPhoto(picked.path);
+    await settings.setWidgetBackground(kept);
+    await HomeWidgetService.saveWidgetStyle(style: settings.widgetStyle, bgPath: kept);
+  }
+
   Future<void> _refreshWidgets() async {
     context.read<GoalService>().notifyExternalChange();
     final ok = await context.read<QuestService>().syncWidget();
@@ -221,10 +237,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 18),
             SysPanel(
               tag: 'WIDGETS',
-              child: Column(children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _WidgetPreviewStrip(settings: settings, preview: widget.previewUrgency),
+                const SizedBox(height: 14),
+                Text('COLOR', style: SysText.label),
+                const SizedBox(height: 8),
+                _StylePicker(
+                  selected: settings.widgetStyle,
+                  onPick: (id) async {
+                    await settings.setWidgetStyle(id);
+                    await HomeWidgetService.saveWidgetStyle(style: id, bgPath: settings.widgetBgPath);
+                  },
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  settings.widgetStyle == 'auto'
+                      ? 'Auto: purple in the day, orange when you might forget, red when it\'s late.'
+                      : '${WidgetThemes.byId(settings.widgetStyle).label} gradient all day. The message still changes with the time.',
+                  style: SysText.body.copyWith(color: SysColors.muted, fontSize: 12, fontWeight: FontWeight.w500),
+                ),
                 _TapRow(
+                  icon: Icons.wallpaper,
+                  title: settings.widgetBgPath == null ? 'Custom background photo' : 'Change background photo',
+                  onTap: _pickWidgetBackground,
+                ),
+                if (settings.widgetBgPath != null)
+                  _TapRow(
+                    icon: Icons.hide_image_outlined,
+                    title: 'Remove background photo',
+                    onTap: () async {
+                      await settings.setWidgetBackground(null);
+                      await HomeWidgetService.saveWidgetStyle(style: settings.widgetStyle);
+                    },
+                  ),
+                const SizedBox(height: 8),
+                _SysButton(
                   icon: Icons.add_to_home_screen,
-                  title: 'Add quest widget to home screen',
+                  label: 'ADD STREAK WIDGET',
+                  onTap: () => pinGoalWidgetWithFeedback(context, null, null),
+                ),
+                const SizedBox(height: 10),
+                _SysButton(
+                  icon: Icons.add_to_home_screen,
+                  label: 'ADD QUEST WIDGET',
                   onTap: () => pinQuestWidgetWithFeedback(context, null),
                 ),
                 _TapRow(
@@ -571,4 +626,78 @@ class _SysButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
       );
+}
+
+class _WidgetPreviewStrip extends StatelessWidget {
+  final SettingsService settings;
+  final DuoUrgency? preview;
+  const _WidgetPreviewStrip({required this.settings, this.preview});
+
+  @override
+  Widget build(BuildContext context) {
+    final goals = context.watch<GoalService>().goals;
+    final now = DateTime.now();
+    final g = goals.isEmpty ? null : goals.first;
+    final streak = g?.streak ?? 0;
+    final done = g?.isCompletedToday ?? false;
+    final days = [for (var i = 4; i >= 0; i--) DateTime(now.year, now.month, now.day - i)];
+    final last5 = [
+      for (final d in days)
+        g?.notes.any((n) => n.date.year == d.year && n.date.month == d.month && n.date.day == d.day) ?? false
+    ];
+    return DuoWidgetPreview(
+      urgency: preview ?? duoUrgencyFor(done, now.hour),
+      style: settings.widgetStyle,
+      bgPath: settings.widgetBgPath,
+      name: settings.fullName.isNotEmpty && settings.fullName != 'Daily Tracker'
+          ? settings.fullName
+          : settings.userName,
+      title: g == null ? 'Your streak' : '${g.emoji} ${g.title}',
+      streak: streak,
+      last5: last5,
+      today: now,
+    );
+  }
+}
+
+class _StylePicker extends StatelessWidget {
+  final String selected;
+  final ValueChanged<String> onPick;
+  const _StylePicker({required this.selected, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(String id, Gradient g, {Widget? child}) {
+      final on = id == selected;
+      return GestureDetector(
+        onTap: () => onPick(id),
+        child: Container(
+          width: 38,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: on ? Colors.white : Colors.transparent, width: 2),
+          ),
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(shape: BoxShape.circle, gradient: g),
+            child: child ?? (on ? const Icon(Icons.check, size: 16, color: Colors.white) : null),
+          ),
+        ),
+      );
+    }
+
+    return Wrap(spacing: 6, runSpacing: 6, children: [
+      dot(
+        'auto',
+        const SweepGradient(colors: [
+          Color(0xFFA24BFF), Color(0xFFFF8A00), Color(0xFFC62828), Color(0xFFA24BFF)
+        ]),
+        child: const Text('A',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+      ),
+      for (final t in WidgetThemes.all) dot(t.id, t.gradient),
+    ]);
+  }
 }

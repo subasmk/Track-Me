@@ -85,41 +85,55 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
             widgetData: SharedPreferences
         ) {
             val binding = resolveBinding(context, appWidgetId, widgetData)
-            val views = RemoteViews(context.packageName, R.layout.widget_quest)
-
             val quest = if (binding != QuestWidgetConfig.TODAY) {
                 findQuest(widgetData.getString(KEY_ALL_JSON, null), binding)
             } else null
 
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val widthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
-            val wide = widthDp >= WIDE_WIDTH_DP
-            views.setViewVisibility(R.id.quest_next, if (wide) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.quest_difficulty, if (wide) View.VISIBLE else View.GONE)
-
-            // setChip may hide empty chips; show them again before rendering.
-            views.setViewVisibility(R.id.quest_streak, View.VISIBLE)
-            if (!wide) views.setViewVisibility(R.id.quest_difficulty, View.GONE)
-            else views.setViewVisibility(R.id.quest_difficulty, View.VISIBLE)
-
-            if (quest != null) {
-                renderSingleQuest(views, quest)
-                views.setOnClickPendingIntent(
-                    R.id.quest_widget_root,
-                    launch(context, "trackme://quest?id=${Uri.encode(quest.optString("id"))}")
+            val model = if (quest != null) {
+                val id = quest.optString("id")
+                DuoWidget.Model(
+                    kind = "quest",
+                    id = if (quest.optBoolean("scheduledToday", true)) id else "",
+                    title = "${quest.optString("emoji", "⚔️")} ${quest.optString("title", "Quest")}",
+                    streak = quest.optInt("streak", 0),
+                    done = quest.optBoolean("completedToday", false),
+                    themeId = null,
+                    last5 = DuoWidget.last5From(quest.optJSONArray("last5")),
+                    openUri = "trackme://quest?id=${Uri.encode(id)}",
                 )
             } else {
-                renderToday(views, widgetData)
-                views.setOnClickPendingIntent(R.id.quest_widget_root, launch(context, "trackme://quests"))
+                // Today's quests: the check button clears the next open quest.
+                val today = parse(widgetData.getString(KEY_TODAY_JSON, null))
+                val list = (0 until today.length()).mapNotNull { today.optJSONObject(it) }
+                val next = list.firstOrNull { !it.optBoolean("completedToday", false) }
+                val completed = list.count { it.optBoolean("completedToday", false) }
+                val allDone = list.isNotEmpty() && next == null
+                val best = list.maxOfOrNull { it.optInt("streak", 0) } ?: 0
+                val title = when {
+                    list.isEmpty() -> "No quests today"
+                    next == null -> "All $completed quests done"
+                    else -> "${next.optString("emoji", "⚔️")} ${next.optString("title", "Quest")}  ·  $completed/${list.size}"
+                }
+                // Strip: a day counts when every scheduled quest was done.
+                val last5 = BooleanArray(5) { i ->
+                    list.isNotEmpty() && list.all { it.optJSONArray("last5")?.optBoolean(i, false) ?: false }
+                }
+                DuoWidget.Model(
+                    kind = "quest",
+                    id = next?.optString("id") ?: "",
+                    title = title,
+                    streak = best,
+                    done = allDone,
+                    themeId = null,
+                    last5 = last5,
+                    openUri = "trackme://quests",
+                )
             }
-
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+            appWidgetManager.updateAppWidget(
+                appWidgetId, DuoWidget.render(context, appWidgetManager, appWidgetId, widgetData, model)
+            )
         }
 
-        /** Which quest this instance shows. A widget that has never been
-         * configured adopts a pin request made from the app in the last few
-         * minutes (so "Add to Home Screen" on a quest really adds that
-         * quest); otherwise it falls back to the today overview. */
         private fun resolveBinding(context: Context, appWidgetId: Int, widgetData: SharedPreferences): String {
             QuestWidgetConfig.get(context, appWidgetId)?.let { return it }
             val pendingId = widgetData.getString(KEY_PENDING_PIN_ID, null)
