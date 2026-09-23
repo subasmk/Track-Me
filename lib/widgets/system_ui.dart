@@ -275,3 +275,27 @@ Future<void> showSystemMessage(BuildContext context,
     ),
   );
 }
+
+/// Hunter rank and title for a player level. Shared by the quest log and profile.
+class SysRank {
+  SysRank._();
+  static String rank(int level) => level >= 50
+      ? 'S'
+      : level >= 35
+          ? 'A'
+          : level >= 20
+              ? 'B'
+              : level >= 10
+                  ? 'C'
+                  : level >= 5
+                      ? 'D'
+                      : 'E';
+
+  static String title(int level) => level >= 20
+      ? 'UNSTOPPABLE'
+      : level >= 10
+          ? 'IRON WILL'
+          : level >= 5
+              ? 'RISING HUNTER'
+              : 'THE AWAKENED';
+}

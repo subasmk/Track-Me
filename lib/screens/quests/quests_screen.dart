@@ -171,9 +171,9 @@ class _TodayHero extends StatelessWidget {
             const SizedBox(width: 16),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('RANK  ${_rank(progression.level)}', style: SysText.label),
+                Text('RANK  ${SysRank.rank(progression.level)}', style: SysText.label),
                 const SizedBox(height: 4),
-                Text('TITLE  ${_title(progression.level)}',
+                Text('TITLE  ${SysRank.title(progression.level)}',
                     style: SysText.label.copyWith(color: SysColors.gold)),
                 const SizedBox(height: 8),
                 SysBar(value: progression.levelProgress),
@@ -256,26 +256,6 @@ class _TodayHero extends StatelessWidget {
       ),
     ]);
   }
-
-  static String _rank(int level) => level >= 50
-      ? 'S'
-      : level >= 35
-          ? 'A'
-          : level >= 20
-              ? 'B'
-              : level >= 10
-                  ? 'C'
-                  : level >= 5
-                      ? 'D'
-                      : 'E';
-
-  static String _title(int level) => level >= 20
-      ? 'UNSTOPPABLE'
-      : level >= 10
-          ? 'IRON WILL'
-          : level >= 5
-              ? 'RISING HUNTER'
-              : 'THE AWAKENED';
 }
 
 class _Collapsible extends StatelessWidget {
