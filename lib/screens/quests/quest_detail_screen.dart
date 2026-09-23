@@ -1,11 +1,13 @@
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../services/quest_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
+import '../../services/quest_share.dart';
 import '../../services/reminder_service.dart';
 import '../../utils/app_clock.dart';
 import '../../widgets/pin_quest_widget.dart';
@@ -90,6 +92,10 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'widget') pinQuestWidgetWithFeedback(context, quest);
+              if (v == 'share') {
+                await SharePlus.instance.share(ShareParams(
+                    text: QuestShare.shareText(quest), subject: 'TrackMe quest'));
+              }
               if (v == 'reminder') await _pickReminder(context, quest, questService);
               if (v == 'reminder_off') await questService.setReminder(quest.id, null);
               if (v == 'delete') await _confirmDelete(context, quest, questService);
@@ -102,6 +108,7 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
                       : 'Reminder: ${quest.reminderTime} (change)')),
               if (quest.reminderTime != null)
                 const PopupMenuItem(value: 'reminder_off', child: Text('Turn off reminder')),
+              const PopupMenuItem(value: 'share', child: Text('Share with a friend')),
               const PopupMenuItem(value: 'widget', child: Text('Add widget to home screen')),
               const PopupMenuItem(value: 'delete', child: Text('Delete quest')),
             ],

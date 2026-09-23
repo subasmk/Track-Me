@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/progression_service.dart';
 import '../../services/quest_service.dart';
+import '../../services/quest_share.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
@@ -45,6 +47,11 @@ class _QuestsScreenState extends State<QuestsScreen> {
             icon: const Icon(Icons.insights_outlined),
             onPressed: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const QuestAnalyticsScreen())),
+          ),
+          IconButton(
+            tooltip: 'Import a shared quest',
+            icon: const Icon(Icons.group_add_outlined),
+            onPressed: () => showImportQuestDialog(context),
           ),
           IconButton(
             tooltip: 'Add widget to home screen',
@@ -290,3 +297,63 @@ void openQuest(BuildContext context, Quest quest) => Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: quest.id)),
     );
+
+
+/// Paste a quest code a friend shared and add it as a new quest.
+Future<void> showImportQuestDialog(BuildContext context) async {
+  final controller = TextEditingController();
+  final clip = await Clipboard.getData(Clipboard.kTextPlain);
+  if (clip?.text != null && QuestShare.decode(clip!.text!) != null) {
+    controller.text = clip.text!;
+  }
+  if (!context.mounted) return;
+  final questService = context.read<QuestService>();
+  final messenger = ScaffoldMessenger.of(context);
+  final shared = await showDialog<SharedQuest>(
+    context: context,
+    builder: (ctx) {
+      String? error;
+      return StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Import a shared quest'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Paste the message or code your friend sent',
+              errorText: error,
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final q = QuestShare.decode(controller.text);
+                if (q == null) {
+                  setState(() => error = 'No valid quest code found');
+                } else {
+                  Navigator.pop(ctx, q);
+                }
+              },
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  controller.dispose();
+  if (shared == null) return;
+  await questService.addQuest(
+    title: shared.title,
+    emoji: shared.emoji,
+    type: shared.type,
+    difficulty: shared.difficulty,
+    startTime: shared.startTime,
+    endTime: shared.endTime,
+    items: shared.items,
+    focusStats: shared.focusStats,
+    targetDays: shared.days,
+  );
+  messenger.showSnackBar(SnackBar(content: Text('Added "${shared.title}" to your quests')));
+}
