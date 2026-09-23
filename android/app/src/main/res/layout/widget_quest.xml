@@ -90,7 +90,9 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
-        <View
+        <!-- Spacer. Must be a RemoteViews-supported class: a plain <View> makes
+             the launcher fail with "An error occurred when loading widget". -->
+        <FrameLayout
             android:layout_width="1dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
