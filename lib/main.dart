@@ -10,6 +10,7 @@ import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
 import 'services/progression_service.dart';
+import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await HiveService.init();
+  await ReminderService.init();
 
   // Force the whole app into dark mode at the system-chrome level so the
   // premium dark theme is consistent regardless of the device's system
@@ -62,6 +64,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     _goalService = GoalService();
     _progression = ProgressionService(HiveService.settingsBox);
     _questService = QuestService(progression: _progression);
+    ReminderService.rescheduleAll(_questService.quests);
     _settingsService = SettingsService();
     _supabaseService = SupabaseService();
 

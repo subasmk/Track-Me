@@ -9,6 +9,7 @@ import '../services/hive_service.dart';
 import '../services/home_widget_service.dart';
 import '../utils/app_clock.dart';
 import 'progression_service.dart';
+import 'reminder_service.dart';
 
 class QuestService extends ChangeNotifier {
   QuestService({Box<Quest>? box, this.progression}) : _box = box ?? HiveService.questsBox {
@@ -159,11 +160,15 @@ class QuestService extends ChangeNotifier {
 
   Future<void> updateQuest(Quest quest) async {
     await quest.save();
+    // Days may have changed: keep reminders on the right weekdays.
+    if (quest.reminderTime != null) unawaited(ReminderService.schedule(quest));
     await _sync();
     notifyListeners();
   }
 
   Future<void> deleteQuest(String id) async {
+    final quest = questById(id);
+    if (quest != null) await ReminderService.cancel(quest);
     await _box.delete(id);
     await _sync();
     notifyListeners();
@@ -243,6 +248,7 @@ class QuestService extends ChangeNotifier {
     if (quest == null) return;
     quest.reminderTime = time;
     await quest.save();
+    await ReminderService.schedule(quest);
     notifyListeners();
   }
 

@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
+import '../../services/reminder_service.dart';
 import '../../utils/app_clock.dart';
 import '../../widgets/pin_quest_widget.dart';
 import '../../widgets/quest_ui.dart';
@@ -89,11 +90,20 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'widget') pinQuestWidgetWithFeedback(context, quest);
+              if (v == 'reminder') await _pickReminder(context, quest, questService);
+              if (v == 'reminder_off') await questService.setReminder(quest.id, null);
               if (v == 'delete') await _confirmDelete(context, quest, questService);
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'widget', child: Text('Add widget to home screen')),
-              PopupMenuItem(value: 'delete', child: Text('Delete quest')),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                  value: 'reminder',
+                  child: Text(quest.reminderTime == null
+                      ? 'Set daily reminder'
+                      : 'Reminder: ${quest.reminderTime} (change)')),
+              if (quest.reminderTime != null)
+                const PopupMenuItem(value: 'reminder_off', child: Text('Turn off reminder')),
+              const PopupMenuItem(value: 'widget', child: Text('Add widget to home screen')),
+              const PopupMenuItem(value: 'delete', child: Text('Delete quest')),
             ],
           ),
         ],
@@ -193,6 +203,29 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickReminder(BuildContext context, Quest quest, QuestService service) async {
+    final current = ReminderService.parseTime(quest.reminderTime ?? quest.startTime);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current == null
+          ? const TimeOfDay(hour: 8, minute: 0)
+          : TimeOfDay(hour: current.hour, minute: current.minute),
+      helpText: 'Daily reminder for ${quest.title}',
+    );
+    if (picked == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final granted = await ReminderService.requestPermission();
+    final time =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    await service.setReminder(quest.id, time);
+    messenger.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      content: Text(granted
+          ? 'Reminder set for $time on ${quest.daysLabel}.'
+          : 'Reminder saved for $time, but notifications are off. Allow them in Android settings.'),
+    ));
   }
 
   Future<void> _confirmDelete(BuildContext context, Quest quest, QuestService service) async {
