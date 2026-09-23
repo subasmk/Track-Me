@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../services/progression_service.dart';
 import '../../services/quest_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
+import '../../utils/app_clock.dart';
+import '../../widgets/pin_quest_widget.dart';
+import '../../widgets/quest_ui.dart';
+import '../../widgets/sloth_sticker.dart';
 import 'quest_detail_screen.dart';
 import 'add_quest_screen.dart';
 
@@ -22,7 +27,8 @@ class _QuestsScreenState extends State<QuestsScreen> {
   @override
   Widget build(BuildContext context) {
     final questService = context.watch<QuestService>();
-    final activeQuests = questService.activeQuestsToday;
+    final activeQuests = questService.activeQuestsToday
+      ..sort((a, b) => (a.startTime ?? '99').compareTo(b.startTime ?? '99'));
     final completedQuests = questService.completedQuestsToday;
     final otherQuests = questService.otherDaysQuests;
     final totalCount = questService.totalQuestsCount;
@@ -33,22 +39,22 @@ class _QuestsScreenState extends State<QuestsScreen> {
         leading: const BackButton(),
         title: const Text('Quests'),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.sm),
-            child: Text(
-              '${questService.completedTodayCount}/${questService.totalTodayCount} today',
-              style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
-            ),
+          IconButton(
+            tooltip: 'Add widget to home screen',
+            icon: const Icon(Icons.widgets_outlined),
+            onPressed: () => pinQuestWidgetWithFeedback(context, null),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const AddQuestScreen()),
         ),
         backgroundColor: AppColors.purpleMid,
-        child: const Icon(Icons.add, color: AppColors.textPrimary),
+        icon: const Icon(Icons.add, color: AppColors.textPrimary),
+        label: const Text('New quest',
+            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
       ),
       body: SafeArea(
         child: totalCount == 0
@@ -57,124 +63,40 @@ class _QuestsScreenState extends State<QuestsScreen> {
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.md, AppSpacing.sm, AppSpacing.md, 100),
                 children: [
-                  // Active Quests Today Section
+                  _TodayHero(
+                    done: questService.completedTodayCount,
+                    total: questService.totalTodayCount,
+                    next: activeQuests.isEmpty ? null : activeQuests.first,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
                   if (activeQuests.isNotEmpty) ...[
+                    const SectionLabel('Up next'),
                     ...activeQuests.map((quest) => Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                          child: _QuestCard(quest: quest),
+                          child: QuestCard(quest: quest),
                         )),
-                  ] else if (completedQuests.isNotEmpty) ...[
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: AppColors.success.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle, color: AppColors.success, size: 28),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              'All quests for today are completed! 🎉',
-                              style: AppTextStyles.body.copyWith(
-                                color: AppColors.success,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
+                  ] else if (completedQuests.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                       child: Center(
-                        child: Text(
-                          'No active quests for today',
-                          style: AppTextStyles.bodyMuted,
-                        ),
+                        child: Text('No quests scheduled today. Enjoy the rest day.',
+                            style: AppTextStyles.bodyMuted),
                       ),
                     ),
-                  ],
-
-                  // Completed Today Section (Invisible by default, toggleable)
-                  if (completedQuests.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    InkWell(
+                  if (completedQuests.isNotEmpty)
+                    _Collapsible(
+                      label: 'Completed today (${completedQuests.length})',
+                      open: _showCompleted || activeQuests.isEmpty,
                       onTap: () => setState(() => _showCompleted = !_showCompleted),
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _showCompleted
-                                  ? Icons.keyboard_arrow_down
-                                  : Icons.keyboard_arrow_right,
-                              color: AppColors.textMuted,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Completed Today (${completedQuests.length})',
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      children: completedQuests.map((q) => QuestCard(quest: q)).toList(),
                     ),
-                    if (_showCompleted) ...[
-                      const SizedBox(height: 6),
-                      ...completedQuests.map((quest) => Padding(
-                            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                            child: _QuestCard(quest: quest),
-                          )),
-                    ],
-                  ],
-
-                  // Other Days Section (Toggleable)
-                  if (otherQuests.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    InkWell(
+                  if (otherQuests.isNotEmpty)
+                    _Collapsible(
+                      label: 'Other days (${otherQuests.length})',
+                      open: _showOtherDays,
                       onTap: () => setState(() => _showOtherDays = !_showOtherDays),
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _showOtherDays
-                                  ? Icons.keyboard_arrow_down
-                                  : Icons.keyboard_arrow_right,
-                              color: AppColors.textMuted,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Scheduled for Other Days (${otherQuests.length})',
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      children: otherQuests.map((q) => QuestCard(quest: q)).toList(),
                     ),
-                    if (_showOtherDays) ...[
-                      const SizedBox(height: 6),
-                      ...otherQuests.map((quest) => Padding(
-                            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                            child: _QuestCard(quest: quest),
-                          )),
-                    ],
-                  ],
                 ],
               ),
       ),
@@ -182,229 +104,149 @@ class _QuestsScreenState extends State<QuestsScreen> {
   }
 }
 
-class _QuestCard extends StatelessWidget {
-  final Quest quest;
-  const _QuestCard({required this.quest});
+class _TodayHero extends StatelessWidget {
+  final int done;
+  final int total;
+  final Quest? next;
+  const _TodayHero({required this.done, required this.total, required this.next});
 
   @override
   Widget build(BuildContext context) {
-    final done = quest.isCompletedToday;
-    final questService = context.watch<QuestService>();
+    final progression = context.watch<ProgressionService>();
+    final progress = total == 0 ? 0.0 : done / total;
+    final allDone = total > 0 && done == total;
+    final sticker = stickerFor(
+      progress: progress,
+      allDone: allDone,
+      hour: AppClock.now().hour,
+      type: next?.type,
+    );
+    final headline = allDone
+        ? 'All done today!'
+        : total == 0
+            ? 'Rest day'
+            : done == 0
+                ? "Let's get moving"
+                : 'Keep going';
+    final sub = allDone
+        ? 'Every quest is complete. Streaks are safe.'
+        : next != null
+            ? 'Next: ${next!.emoji} ${next!.title}${next!.startTime != null ? ' at ${next!.startTime}' : ''}'
+            : 'Nothing left for today.';
 
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: done
-              ? AppColors.success.withValues(alpha: 0.4)
-              : AppColors.surfaceBorder,
-          width: 1.5,
-        ),
-      ),
       padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1B7FD4), Color(0xFF063370)],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.purple.withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => QuestDetailScreen(questId: quest.id),
+          Row(
+            children: [
+              ProgressRing(
+                progress: progress,
+                size: 84,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('$done/$total',
+                      style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
+                  Text('today', style: AppTextStyles.caption.copyWith(color: Colors.white70)),
+                ]),
               ),
-            ),
-            child: Row(
-              children: [
-                // Left: emoji + done ring
-                Stack(
-                  alignment: Alignment.bottomRight,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(quest.emoji, style: const TextStyle(fontSize: 26)),
-                    ),
-                    if (done)
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.surface, width: 2),
-                        ),
-                        child: const Icon(Icons.check, size: 10, color: Colors.white),
-                      ),
+                    Text(headline,
+                        style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(sub,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.caption.copyWith(color: Colors.white70, fontSize: 13)),
                   ],
                 ),
-                const SizedBox(width: AppSpacing.md),
-                // Middle: info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(quest.title, style: AppTextStyles.body, maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          _Chip(label: quest.type, color: AppColors.purpleMid),
-                          const SizedBox(width: 6),
-                          _Chip(
-                            label: quest.difficulty,
-                            color: _difficultyColor(quest.difficulty),
-                          ),
-                          const SizedBox(width: 6),
-                          _Chip(
-                            label: quest.daysLabel,
-                            color: AppColors.purpleLight,
-                          ),
-                          if (quest.items.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            _Chip(
-                              label: '${quest.items.length} sub-tasks',
-                              color: AppColors.textMuted,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.local_fire_department,
-                              color: AppColors.flameOrange, size: 14),
-                          const SizedBox(width: 3),
-                          Text(
-                            '${quest.streak} day streak',
-                            style: AppTextStyles.caption
-                                .copyWith(color: AppColors.flameOrange),
-                          ),
-                          if (quest.timeRange != null) ...[
-                            const SizedBox(width: 10),
-                            const Icon(Icons.schedule,
-                                color: AppColors.textMuted, size: 13),
-                            const SizedBox(width: 3),
-                            Text(
-                              quest.timeRange!,
-                              style: AppTextStyles.caption,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                // Right: XP badge
-                Column(
-                  children: [
-                    Text(
-                      '${quest.xp}',
-                      style: AppTextStyles.body.copyWith(
-                        color: AppColors.purpleLight,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text('XP', style: AppTextStyles.caption),
-                  ],
-                ),
-              ],
-            ),
+              ),
+              SlothStickerView(sticker: sticker, size: 88, glow: false),
+            ],
           ),
-
-          // Sub-tasks checklist section inside Quest card
-          if (quest.items.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            const Divider(color: AppColors.surfaceBorder, height: 16),
-            ...quest.items.map((item) {
-              final itemDone = done || item.isDone;
-              return InkWell(
-                onTap: () async {
-                  await questService.toggleQuestItem(quest.id, item.id);
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: itemDone
-                              ? AppColors.success
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: itemDone
-                                ? AppColors.success
-                                : AppColors.textMuted,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: itemDone
-                            ? const Icon(Icons.check, size: 14, color: Colors.white)
-                            : null,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          item.name,
-                          style: AppTextStyles.body.copyWith(
-                            fontSize: 13,
-                            decoration: itemDone ? TextDecoration.lineThrough : null,
-                            color: itemDone ? AppColors.textMuted : AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${item.target} ${item.unit}',
-                        style: AppTextStyles.caption.copyWith(fontSize: 11),
-                      ),
-                    ],
+          ...[
+            const SizedBox(height: AppSpacing.md),
+            Row(children: [
+              LevelBadge(level: progression.level),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: progression.levelProgress,
+                      minHeight: 8,
+                      backgroundColor: Colors.white.withValues(alpha: 0.15),
+                      valueColor: const AlwaysStoppedAnimation(AppColors.flameYellow),
+                    ),
                   ),
-                ),
-              );
-            }),
+                  const SizedBox(height: 4),
+                  Text('${progression.xpIntoLevel} / ${progression.xpForNextLevel} XP to level ${progression.level + 1}',
+                      style: AppTextStyles.caption.copyWith(color: Colors.white70, fontSize: 11)),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              Text('🪙 ${progression.gold}',
+                  style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
+            ]),
           ],
         ],
       ),
     );
   }
-
-  Color _difficultyColor(String d) {
-    switch (d) {
-      case 'Easy':
-        return AppColors.success;
-      case 'Hard':
-        return AppColors.flameRed;
-      default:
-        return AppColors.flameYellow;
-    }
-  }
 }
 
-class _Chip extends StatelessWidget {
+class _Collapsible extends StatelessWidget {
   final String label;
-  final Color color;
-  const _Chip({required this.label, required this.color});
+  final bool open;
+  final VoidCallback onTap;
+  final List<Widget> children;
+  const _Collapsible(
+      {required this.label, required this.open, required this.onTap, required this.children});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(label,
-          style: AppTextStyles.caption.copyWith(color: color, fontSize: 10)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(children: [
+              Icon(open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                  color: AppColors.textMuted, size: 20),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: AppTextStyles.caption.copyWith(
+                      color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        ),
+        if (open)
+          ...children.map((c) =>
+              Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: c)),
+      ],
     );
   }
 }
@@ -420,12 +262,12 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.shield_outlined, size: 64, color: AppColors.textMuted),
+            const SlothStickerView(sticker: SlothSticker.ready, size: 150),
             const SizedBox(height: AppSpacing.md),
             Text('No quests yet', style: AppTextStyles.title),
             const SizedBox(height: 6),
             Text(
-              'Tap the + button to create your first quest — a structured daily challenge with multiple goals.',
+              'Create a quest: a daily challenge with a few small tasks. Start from a template or build your own.',
               style: AppTextStyles.bodyMuted,
               textAlign: TextAlign.center,
             ),
@@ -435,3 +277,9 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Opens a quest's detail screen.
+void openQuest(BuildContext context, Quest quest) => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: quest.id)),
+    );

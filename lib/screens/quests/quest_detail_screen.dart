@@ -1,22 +1,57 @@
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/quest_service.dart';
-import '../../widgets/pin_quest_widget.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
-import '../../models/quest_item.dart';
+import '../../utils/app_clock.dart';
+import '../../widgets/pin_quest_widget.dart';
+import '../../widgets/quest_ui.dart';
+import '../../widgets/sloth_sticker.dart';
 import 'add_quest_screen.dart';
+import 'focus_timer_screen.dart';
 
-class QuestDetailScreen extends StatelessWidget {
+class QuestDetailScreen extends StatefulWidget {
   final String questId;
   const QuestDetailScreen({super.key, required this.questId});
 
   @override
+  State<QuestDetailScreen> createState() => _QuestDetailScreenState();
+}
+
+class _QuestDetailScreenState extends State<QuestDetailScreen> {
+  late final ConfettiController _confetti =
+      ConfettiController(duration: const Duration(seconds: 2));
+  bool? _wasDone;
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  void _celebrateIfJustCompleted(Quest quest, QuestService service) {
+    final done = quest.isCompletedToday;
+    if (_wasDone == false && done) {
+      _confetti.play();
+      final levelUp = service.takeLevelUp();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showDialog<void>(
+          context: context,
+          builder: (_) => _RewardDialog(quest: quest, levelUp: levelUp),
+        );
+      });
+    }
+    _wasDone = done;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final questService = context.watch<QuestService>();
-    final quest = questService.questById(questId);
+    final quest = questService.questById(widget.questId);
 
     if (quest == null) {
       return Scaffold(
@@ -27,452 +62,400 @@ class QuestDetailScreen extends StatelessWidget {
         ),
       );
     }
+    _celebrateIfJustCompleted(quest, questService);
+
+    final done = quest.isCompletedToday;
+    final sticker = stickerFor(
+      progress: quest.todayProgress,
+      allDone: done,
+      hour: AppClock.now().hour,
+      type: quest.type,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Quest'),
+        actions: [
+          IconButton(
+            tooltip: 'Edit',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => AddQuestScreen(existingQuest: quest)),
+            ),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (v) async {
+              if (v == 'widget') pinQuestWidgetWithFeedback(context, quest);
+              if (v == 'delete') await _confirmDelete(context, quest, questService);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'widget', child: Text('Add widget to home screen')),
+              PopupMenuItem(value: 'delete', child: Text('Delete quest')),
+            ],
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, 120),
+            children: [
+              _Hero(quest: quest, sticker: sticker),
+              const SizedBox(height: AppSpacing.md),
+              _StatsRow(quest: quest),
+              const SizedBox(height: AppSpacing.lg),
+              if (quest.items.isNotEmpty) ...[
+                SectionLabel('Tasks · ${quest.doneItemCount}/${quest.items.length}'),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(color: AppColors.surfaceBorder),
+                  ),
+                  child: Column(
+                    children: [
+                      for (final item in quest.items)
+                        _TaskRow(
+                          name: item.name,
+                          target: item.progressLabel,
+                          unit: item.unit,
+                          done: done || item.isDone,
+                          isNext: quest.nextItem?.id == item.id,
+                          onTap: () => questService.toggleQuestItem(quest.id, item.id),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+              const SectionLabel('Reward'),
+              _RewardStrip(quest: quest),
+            ],
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confetti,
+              blastDirectionality: BlastDirectionality.explosive,
+              numberOfParticles: 30,
+              colors: const [
+                AppColors.flameYellow,
+                AppColors.success,
+                AppColors.purpleLight,
+                AppColors.flameOrange,
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: _QuestInfoPanel(quest: quest, questService: questService),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.md, 8, AppSpacing.md, AppSpacing.md),
+          child: Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => FocusTimerScreen(questId: quest.id)),
+                ),
+                icon: const Icon(Icons.timer_outlined),
+                label: const Text('Focus'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.purpleLight,
+                  side: const BorderSide(color: AppColors.purpleMid),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                onPressed: done ? null : () => questService.completeToday(quest.id),
+                icon: Icon(done ? Icons.check_circle : Icons.bolt),
+                label: Text(done ? 'Completed today' : 'Complete quest'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  disabledBackgroundColor: AppColors.success.withValues(alpha: 0.25),
+                  foregroundColor: const Color(0xFF052E16),
+                  disabledForegroundColor: AppColors.success,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  textStyle: const TextStyle(fontFamily: 'Roboto', fontWeight: FontWeight.w800, fontSize: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+                ),
+              ),
+            ),
+          ]),
         ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, Quest quest, QuestService service) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Delete quest?'),
+        content: Text('"${quest.title}" and its streak will be removed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await service.deleteQuest(quest.id);
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+}
+
+class _Hero extends StatelessWidget {
+  final Quest quest;
+  final SlothSticker sticker;
+  const _Hero({required this.quest, required this.sticker});
+
+  @override
+  Widget build(BuildContext context) {
+    final done = quest.isCompletedToday;
+    final message = done
+        ? 'Quest complete. See you tomorrow!'
+        : quest.nextItem != null
+            ? 'Next up: ${quest.nextItem!.name}'
+            : quest.isScheduledForToday
+                ? 'Ready when you are.'
+                : 'Not scheduled today (${quest.daysLabel}).';
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: done
+              ? const [Color(0xFF15803D), Color(0xFF064E3B)]
+              : const [Color(0xFF1B7FD4), Color(0xFF063370)],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ProgressRing(
+                progress: quest.todayProgress,
+                size: 76,
+                child: Text(quest.emoji, style: const TextStyle(fontSize: 32)),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(quest.title,
+                        style: AppTextStyles.headline.copyWith(fontSize: 22),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      MetaChip(label: quest.type, color: Colors.white),
+                      MetaChip(label: quest.difficulty, color: difficultyColor(quest.difficulty)),
+                      if (quest.timeRange != null)
+                        MetaChip(label: quest.timeRange!, icon: Icons.schedule, color: Colors.white),
+                      MetaChip(label: quest.daysLabel, color: Colors.white70),
+                    ]),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(message,
+                      style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SlothStickerView(sticker: sticker, size: 92, glow: false),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _QuestInfoPanel extends StatelessWidget {
+class _StatsRow extends StatelessWidget {
   final Quest quest;
-  final QuestService questService;
-  const _QuestInfoPanel({required this.quest, required this.questService});
+  const _StatsRow({required this.quest});
 
   @override
   Widget build(BuildContext context) {
-    final done = quest.isCompletedToday;
-
-    return Column(
-      children: [
-        // Header row: checkmark icon + "QUEST INFO" + close
-        _Header(quest: quest, onClose: () => Navigator.pop(context)),
-        const SizedBox(height: AppSpacing.md),
-
-        // Main panel
-        Expanded(
+    Widget tile(String value, String label, IconData icon, Color color) => Expanded(
           child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-              border: Border.all(
-                color: done
-                    ? AppColors.success.withOpacity(0.5)
-                    : AppColors.purpleMid.withOpacity(0.4),
-                width: 1.5,
-              ),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Quest name
-                  Center(
-                    child: Text(
-                      '[Quest: ${quest.title}]',
-                      style: AppTextStyles.body.copyWith(
-                        color: AppColors.textSecondary,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Time range
-                  if (quest.timeRange != null)
-                    Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.schedule,
-                              color: AppColors.textMuted, size: 15),
-                          const SizedBox(width: 5),
-                          Text(
-                            quest.timeRange!,
-                            style: AppTextStyles.body.copyWith(
-                                color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Streak row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.trending_up,
-                          color: AppColors.flameOrange, size: 16),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${quest.streak} Day Streak',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.flameOrange,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      const Icon(Icons.emoji_events,
-                          color: AppColors.flameYellow, size: 16),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Longest: ${quest.longestStreak}',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.flameYellow,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Divider
-                  Divider(
-                    color: AppColors.surfaceBorder,
-                    thickness: 1,
-                  ),
-
-                  const SizedBox(height: AppSpacing.sm),
-
-                  // Goals section header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.checklist_rounded,
-                          color: AppColors.purpleMid, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Goals',
-                        style: AppTextStyles.title.copyWith(
-                            color: AppColors.purpleLight),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: AppSpacing.sm),
-
-                  // Quest items
-                  if (quest.items.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          'No goals added yet',
-                          style: AppTextStyles.bodyMuted,
-                        ),
-                      ),
-                    )
-                  else
-                    ...quest.items.map((item) => _GoalRow(
-                          questId: quest.id,
-                          item: item,
-                          completed: done,
-                          questService: questService,
-                        )),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Footer: type, difficulty, days, xp, gold, focus
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(
-                          'Type: ${quest.type} | Difficulty: ${quest.difficulty} | Days: ${quest.daysLabel}',
-                          style: AppTextStyles.caption,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${quest.xp} XP | ${quest.gold} G | Focus: ${quest.focusStats}',
-                          style: AppTextStyles.caption,
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Add to Home Screen Widget Option
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => pinQuestWidgetWithFeedback(context, quest),
-                      icon: const Icon(Icons.widgets_outlined, size: 18),
-                      label: const Text('Add to Home Screen'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.purpleLight,
-                        side: const BorderSide(color: AppColors.purpleMid),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: AppSpacing.md),
-
-        // Actions row: Edit + Complete
-        Row(
-          children: [
-            // Edit button
-            OutlinedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AddQuestScreen(existingQuest: quest),
-                ),
-              ),
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Edit'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                side: const BorderSide(color: AppColors.surfaceBorder),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md, vertical: 12),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            // Complete button
-            Expanded(
-              child: _CompleteButton(quest: quest, questService: questService),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: AppSpacing.sm),
-
-        // Delete button
-        TextButton(
-          onPressed: () async {
-            final confirm = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: AppColors.surface,
-                title: const Text('Delete Quest'),
-                content: Text(
-                    'Delete "${quest.title}"? This cannot be undone.'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Delete',
-                        style: TextStyle(color: AppColors.danger)),
-                  ),
-                ],
-              ),
-            );
-            if (confirm == true && context.mounted) {
-              await questService.deleteQuest(quest.id);
-              if (context.mounted) Navigator.pop(context);
-            }
-          },
-          child: Text('Delete Quest',
-              style: AppTextStyles.caption.copyWith(color: AppColors.danger)),
-        ),
-      ],
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  final Quest quest;
-  final VoidCallback onClose;
-  const _Header({required this.quest, required this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.success.withOpacity(0.15),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.success, width: 1.5),
-          ),
-          child: const Icon(Icons.check_circle_outline,
-              color: AppColors.success, size: 24),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.surfaceBorder, width: 1.5),
               borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.surfaceBorder),
             ),
-            child: Text(
-              'QUEST INFO',
-              style: AppTextStyles.headline.copyWith(
-                fontSize: 18,
-                letterSpacing: 1.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            child: Column(children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(height: 4),
+              Text(value, style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
+              Text(label, style: AppTextStyles.caption.copyWith(fontSize: 11)),
+            ]),
           ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        GestureDetector(
-          onTap: onClose,
-          child: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.danger.withOpacity(0.15),
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: AppColors.danger.withOpacity(0.4), width: 1),
-            ),
-            child: const Icon(Icons.close, color: AppColors.danger, size: 18),
-          ),
-        ),
-      ],
-    );
+        );
+    return Row(children: [
+      tile('${quest.streak}', 'streak', Icons.local_fire_department, AppColors.flameOrange),
+      const SizedBox(width: 8),
+      tile('${quest.longestStreak}', 'best', Icons.emoji_events_outlined, AppColors.flameYellow),
+      const SizedBox(width: 8),
+      tile('${quest.completionHistory.length}', 'completions', Icons.check_circle_outline,
+          AppColors.success),
+      const SizedBox(width: 8),
+      tile('${quest.focusMinutes}', 'focus min', Icons.timer_outlined, AppColors.purpleLight),
+    ]);
   }
 }
 
-class _GoalRow extends StatelessWidget {
-  final String questId;
-  final QuestItem item;
-  final bool completed;
-  final QuestService questService;
-
-  const _GoalRow({
-    required this.questId,
-    required this.item,
-    required this.completed,
-    required this.questService,
+class _TaskRow extends StatelessWidget {
+  final String name;
+  final String target;
+  final String unit;
+  final bool done;
+  final bool isNext;
+  final VoidCallback onTap;
+  const _TaskRow({
+    required this.name,
+    required this.target,
+    required this.unit,
+    required this.done,
+    required this.isNext,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final itemDone = completed || item.isDone;
-
     return InkWell(
-      onTap: () async {
-        await questService.toggleQuestItem(questId, item.id);
-      },
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                item.name,
-                style: AppTextStyles.body.copyWith(
-                  decoration: itemDone ? TextDecoration.lineThrough : null,
-                  color: itemDone ? AppColors.textMuted : AppColors.textPrimary,
-                ),
-              ),
-            ),
-            Text(
-              itemDone
-                  ? '${item.target}/${item.target}${item.sets > 1 ? ' × ${item.sets}' : ''}'
-                  : '0/${item.target}${item.sets > 1 ? ' × ${item.sets}' : ''}',
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: itemDone
-                    ? AppColors.success.withOpacity(0.2)
-                    : AppColors.surfaceLight,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: itemDone
-                      ? AppColors.success
-                      : AppColors.surfaceBorder,
-                  width: 1.5,
-                ),
-              ),
-              child: itemDone
-                  ? const Icon(Icons.check, size: 14, color: AppColors.success)
-                  : null,
-            ),
-          ],
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: isNext ? AppColors.purpleMid.withValues(alpha: 0.10) : null,
+          border: const Border(bottom: BorderSide(color: AppColors.surfaceBorder)),
         ),
+        child: Row(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: done ? AppColors.success : Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: done ? AppColors.success : (isNext ? AppColors.purpleLight : AppColors.textMuted),
+                  width: 2),
+            ),
+            child: done ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(name,
+                style: AppTextStyles.body.copyWith(
+                  fontWeight: FontWeight.w600,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                  color: done ? AppColors.textMuted : AppColors.textPrimary,
+                )),
+          ),
+          Text('$target $unit',
+              style: AppTextStyles.caption.copyWith(
+                  color: done ? AppColors.success : AppColors.textSecondary,
+                  fontWeight: FontWeight.w700)),
+        ]),
       ),
     );
   }
 }
 
-class _CompleteButton extends StatelessWidget {
+class _RewardStrip extends StatelessWidget {
   final Quest quest;
-  final QuestService questService;
-  const _CompleteButton({required this.quest, required this.questService});
+  const _RewardStrip({required this.quest});
 
   @override
   Widget build(BuildContext context) {
-    final done = quest.isCompletedToday;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Row(children: [
+        const Text('⚡', style: TextStyle(fontSize: 20)),
+        const SizedBox(width: 6),
+        Text('${quest.xp} XP', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(width: 16),
+        const Text('🪙', style: TextStyle(fontSize: 20)),
+        const SizedBox(width: 6),
+        Text('${quest.gold} gold', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
+        const Spacer(),
+        Text('Boosts ${quest.focusStats}', style: AppTextStyles.caption),
+      ]),
+    );
+  }
+}
 
-    return ElevatedButton.icon(
-      onPressed: done
-          ? null
-          : () async {
-              await questService.completeToday(quest.id);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '${quest.emoji} Quest completed! +${quest.xp} XP',
-                    ),
-                    backgroundColor: AppColors.success,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
-      icon: Icon(
-        done ? Icons.check_circle : Icons.check_circle_outline,
-        size: 20,
-        color: done ? AppColors.textMuted : AppColors.textPrimary,
-      ),
-      label: Text(
-        done ? 'COMPLETED' : 'COMPLETE QUEST',
-        style: AppTextStyles.button.copyWith(
-          color: done ? AppColors.textMuted : AppColors.textPrimary,
-          letterSpacing: 1.2,
-        ),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: done ? AppColors.surfaceLight : AppColors.success,
-        disabledBackgroundColor: AppColors.surfaceLight,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          side: BorderSide(
-            color: done ? AppColors.surfaceBorder : AppColors.success,
-            width: 1.5,
+class _RewardDialog extends StatelessWidget {
+  final Quest quest;
+  final bool levelUp;
+  const _RewardDialog({required this.quest, required this.levelUp});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SlothStickerView(
+              sticker: levelUp ? SlothSticker.levelUp : SlothSticker.cheering, size: 150),
+          const SizedBox(height: AppSpacing.sm),
+          Text(levelUp ? 'Level up!' : 'Quest complete!',
+              style: AppTextStyles.headline, textAlign: TextAlign.center),
+          const SizedBox(height: 6),
+          Text('+${quest.xp} XP  ·  +${quest.gold} gold  ·  🔥 ${quest.streak} day streak',
+              style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.pop(context),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.purpleMid),
+              child: const Text('Nice!'),
+            ),
           ),
-        ),
+        ]),
       ),
     );
   }
