@@ -5,7 +5,8 @@ name: Build TrackMe APK
 # needing to push a new commit each time.
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'feature/**' ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -29,6 +30,13 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # Fail on real errors/warnings; the existing style infos are not fatal.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
 
       - name: Build release split APKs
         run: flutter build apk --release --split-per-abi

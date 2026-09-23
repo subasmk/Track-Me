@@ -11,6 +11,10 @@
 
     <!-- Quest widget -->
     <string name="quest_widget_label">TrackMe Quests</string>
+    <string name="quest_widget_configure_title">Choose a Quest</string>
+    <string name="quest_widget_configure_subtitle">Show today\'s quests, or pin one quest.</string>
+    <string name="quest_widget_today_option">Today\'s quests</string>
+    <string name="quest_widget_today_hint">Progress and the next quest to do</string>
 
     <!-- Widget configure activity -->
     <string name="widget_configure_title">Choose a Goal</string>

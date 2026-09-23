@@ -12,6 +12,7 @@
         android:padding="20dp">
 
         <TextView
+            android:id="@+id/configure_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/widget_configure_title"
@@ -21,6 +22,7 @@
             android:fontFamily="sans-serif-medium" />
 
         <TextView
+            android:id="@+id/configure_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"

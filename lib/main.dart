@@ -9,16 +9,21 @@ import 'services/hive_service.dart';
 import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
+import 'services/progression_service.dart';
+import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/goal_detail/goal_detail_screen.dart';
 import 'screens/auth/auth_screen.dart';
+import 'screens/quests/quests_screen.dart';
+import 'screens/quests/quest_detail_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await HiveService.init();
+  await ReminderService.init();
 
   // Force the whole app into dark mode at the system-chrome level so the
   // premium dark theme is consistent regardless of the device's system
@@ -42,11 +47,12 @@ class TrackMeApp extends StatefulWidget {
   State<TrackMeApp> createState() => _TrackMeAppState();
 }
 
-class _TrackMeAppState extends State<TrackMeApp> {
+class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   late final GoalService _goalService;
   late final QuestService _questService;
+  late final ProgressionService _progression;
   late final SettingsService _settingsService;
   late final SupabaseService _supabaseService;
   StreamSubscription<Uri?>? _widgetClickSub;
@@ -54,8 +60,11 @@ class _TrackMeAppState extends State<TrackMeApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _goalService = GoalService();
-    _questService = QuestService();
+    _progression = ProgressionService(HiveService.settingsBox);
+    _questService = QuestService(progression: _progression);
+    ReminderService.rescheduleAll(_questService.quests);
     _settingsService = SettingsService();
     _supabaseService = SupabaseService();
 
@@ -73,6 +82,15 @@ class _TrackMeAppState extends State<TrackMeApp> {
     // Tapping a goal's home-screen widget should open that goal directly.
     _handleInitialWidgetLaunch();
     _widgetClickSub = HomeWidget.widgetClicked.listen(_handleWidgetUri);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The day may have rolled over while TrackMe sat in the background:
+    // reset yesterday's sub-task ticks and refresh the home-screen widget.
+    if (state == AppLifecycleState.resumed) {
+      _questService.refreshForNewDay();
+    }
   }
 
   void _onSettingsChanged() {
@@ -93,32 +111,39 @@ class _TrackMeAppState extends State<TrackMeApp> {
   }
 
   void _handleWidgetUri(Uri? uri) {
-    if (uri == null) return;
-
-    // Goal deep link: trackme://goal?id=<goalId>
-    if (uri.host == 'goal') {
-      final goalId = uri.queryParameters['id'];
-      if (goalId == null) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final goal = _goalService.goalById(goalId);
-        if (goal == null) return;
-        _navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => GoalDetailScreen(goalId: goal.id)),
-        );
-      });
-    }
-    // Quest deep link could be added here in the future:
-    // else if (uri.host == 'quest') { ... }
+    final route = widgetRouteFor(uri);
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final nav = _navigatorKey.currentState;
+      if (nav == null) return;
+      switch (route.kind) {
+        case WidgetRouteKind.goal:
+          if (_goalService.goalById(route.id!) == null) return;
+          nav.push(MaterialPageRoute(
+              builder: (_) => GoalDetailScreen(goalId: route.id!)));
+        case WidgetRouteKind.quests:
+          nav.push(MaterialPageRoute(builder: (_) => const QuestsScreen()));
+        case WidgetRouteKind.quest:
+          if (_questService.questById(route.id!) == null) {
+            nav.push(MaterialPageRoute(builder: (_) => const QuestsScreen()));
+            return;
+          }
+          nav.push(MaterialPageRoute(
+              builder: (_) => QuestDetailScreen(questId: route.id!)));
+      }
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _widgetClickSub?.cancel();
     _settingsService.removeListener(_onSettingsChanged);
     _goalService.removeListener(_onDataChanged);
     _questService.removeListener(_onDataChanged);
     _goalService.dispose();
     _questService.dispose();
+    _progression.dispose();
     _settingsService.dispose();
     _supabaseService.dispose();
     super.dispose();
@@ -130,6 +155,7 @@ class _TrackMeAppState extends State<TrackMeApp> {
       providers: [
         ChangeNotifierProvider<GoalService>.value(value: _goalService),
         ChangeNotifierProvider<QuestService>.value(value: _questService),
+        ChangeNotifierProvider<ProgressionService>.value(value: _progression),
         ChangeNotifierProvider<SettingsService>.value(value: _settingsService),
         ChangeNotifierProvider<SupabaseService>.value(value: _supabaseService),
       ],
@@ -152,4 +178,33 @@ class _TrackMeAppState extends State<TrackMeApp> {
       ),
     );
   }
+}
+
+enum WidgetRouteKind { goal, quests, quest }
+
+class WidgetRoute {
+  final WidgetRouteKind kind;
+  final String? id;
+  const WidgetRoute(this.kind, [this.id]);
+}
+
+/// Maps a home-screen widget tap URI to an in-app destination.
+/// - trackme://goal?id=<goalId>   -> goal detail
+/// - trackme://quest?id=<questId> -> quest detail
+/// - trackme://quests             -> quest list
+/// Anything else (e.g. trackme://open) just opens the app.
+WidgetRoute? widgetRouteFor(Uri? uri) {
+  if (uri == null) return null;
+  final id = uri.queryParameters['id'];
+  switch (uri.host) {
+    case 'goal':
+      return (id == null || id.isEmpty) ? null : WidgetRoute(WidgetRouteKind.goal, id);
+    case 'quest':
+      return (id == null || id.isEmpty)
+          ? const WidgetRoute(WidgetRouteKind.quests)
+          : WidgetRoute(WidgetRouteKind.quest, id);
+    case 'quests':
+      return const WidgetRoute(WidgetRouteKind.quests);
+  }
+  return null;
 }

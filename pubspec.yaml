@@ -57,6 +57,9 @@ dependencies:
   # show the removed one.
   share_plus: ^12.0.2
   file_picker: ^10.1.0
+  flutter_local_notifications: ^19.4.0
+  timezone: ^0.10.1
+  flutter_timezone: ^4.1.1
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +70,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/mascot/
   # No bundled image/font assets: the sloth mascot and all iconography are
   # drawn in code (CustomPainter + Material/emoji glyphs) so the app builds
   # and runs with zero missing-asset risk.
