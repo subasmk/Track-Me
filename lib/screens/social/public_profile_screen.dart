@@ -13,7 +13,8 @@ class PublicProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final supabase = context.watch<SupabaseService>();
-    final isFriend = supabase.friendsList.contains(profile.username);
+    final friendship = supabase.friendshipWith(profile.id);
+    final isFriend = friendship?.accepted ?? false;
     final isSelf = supabase.currentUsername.toLowerCase() == profile.username.toLowerCase();
 
     const bgDark = Color(0xFF070D18);
@@ -41,20 +42,36 @@ class PublicProfileScreen extends StatelessWidget {
         actions: [
           if (!isSelf)
             IconButton(
-              icon: Icon(isFriend ? Icons.person_remove : Icons.person_add, color: Colors.white),
-              tooltip: isFriend ? 'Remove Friend' : 'Add Friend',
-              onPressed: () {
-                if (isFriend) {
-                  supabase.removeFriend(profile.username);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Removed ${profile.username} from friends.')),
-                  );
+              icon: Icon(
+                  friendship == null
+                      ? Icons.person_add
+                      : friendship.accepted
+                          ? Icons.person_remove
+                          : Icons.hourglass_top,
+                  color: Colors.white),
+              tooltip: friendship == null
+                  ? 'Add friend'
+                  : friendship.accepted
+                      ? 'Remove friend'
+                      : friendship.incoming
+                          ? 'Accept request'
+                          : 'Cancel request',
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final bool ok;
+                final String done;
+                if (friendship == null) {
+                  ok = await supabase.sendFriendRequest(profile);
+                  done = 'Friend request sent to @${profile.username}';
+                } else if (!friendship.accepted && friendship.incoming) {
+                  ok = await supabase.acceptFriendRequest(friendship);
+                  done = 'You and @${profile.username} are now friends';
                 } else {
-                  supabase.addFriend(profile.username);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Added ${profile.username} as friend! 🎉')),
-                  );
+                  ok = await supabase.removeFriendship(friendship);
+                  done = friendship.accepted ? 'Removed @${profile.username}' : 'Request cancelled';
                 }
+                messenger.showSnackBar(SnackBar(
+                    content: Text(ok ? done : "Couldn't update. Check your connection and cloud setup.")));
               },
             ),
           const SizedBox(width: 8),

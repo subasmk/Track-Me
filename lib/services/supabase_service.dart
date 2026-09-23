@@ -403,36 +403,171 @@ class SupabaseService extends ChangeNotifier {
   }
 
   Future<List<PublicProfile>> searchProfiles(String query) async {
-    final q = query.trim().toLowerCase();
-
-    if (_clientReady) {
-      try {
-        if (q.isEmpty) {
-          final res = await Supabase.instance.client
-              .from('profiles')
-              .select()
-              .limit(20);
-          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
-        } else {
-          final res = await Supabase.instance.client
-              .from('profiles')
-              .select()
-              .ilike('username', '%$q%');
-          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
-        }
-      } catch (e) {
-        debugPrint('Supabase search profiles error: $e');
-      }
+    final q = query.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_. ]'), '');
+    if (!_clientReady || q.isEmpty) return [];
+    try {
+      var req = Supabase.instance.client
+          .from('profiles')
+          .select()
+          .or('username.ilike.%$q%,full_name.ilike.%$q%')
+          .eq('discoverable', true);
+      final uid = currentUser?.id;
+      if (uid != null) req = req.neq('id', uid);
+      final res = await req.order('current_streak', ascending: false).limit(30) as List;
+      return res.map((e) => PublicProfile.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('Supabase search profiles error: $e');
+      return [];
     }
+  }
 
-    return [];
+  // ---------------- friends (friendships table) ----------------
+
+  List<Friendship> _friendships = [];
+  List<Friendship> get friendships => List.unmodifiable(_friendships);
+  List<Friendship> get friends => _friendships.where((f) => f.accepted).toList();
+  List<Friendship> get incomingRequests =>
+      _friendships.where((f) => !f.accepted && f.incoming).toList();
+  List<Friendship> get outgoingRequests =>
+      _friendships.where((f) => !f.accepted && !f.incoming).toList();
+
+  Friendship? friendshipWith(String profileId) {
+    for (final f in _friendships) {
+      if (f.other.id == profileId) return f;
+    }
+    return null;
+  }
+
+  /// Screenshot tests only.
+  @visibleForTesting
+  void debugSetFriendships(List<Friendship> list) {
+    _friendships = list;
+  }
+
+  /// Loads my friendships and the profiles on the other side.
+  /// Returns false when the cloud isn't reachable or set up.
+  Future<bool> loadFriendships() async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null) return false;
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('friendships')
+          .select()
+          .or('requester.eq.$uid,addressee.eq.$uid') as List;
+      final otherIds = {
+        for (final r in rows) (r['requester'] == uid ? r['addressee'] : r['requester']) as String
+      }.toList();
+      final profiles = <String, PublicProfile>{};
+      if (otherIds.isNotEmpty) {
+        final ps = await client.from('profiles').select().inFilter('id', otherIds) as List;
+        for (final p in ps) {
+          final prof = PublicProfile.fromJson(p as Map<String, dynamic>);
+          profiles[prof.id] = prof;
+        }
+      }
+      _friendships = [
+        for (final r in rows)
+          if (profiles[r['requester'] == uid ? r['addressee'] : r['requester']] != null)
+            Friendship(
+              id: r['id'] as int,
+              other: profiles[r['requester'] == uid ? r['addressee'] : r['requester']]!,
+              accepted: r['status'] == 'accepted',
+              incoming: r['addressee'] == uid,
+            )
+      ];
+      _friendsList = friends.map((f) => f.other.username).toList();
+      _saveLocalState();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('loadFriendships: $e');
+      return false;
+    }
+  }
+
+  Future<bool> sendFriendRequest(PublicProfile to) async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null || to.id == uid) return false;
+    try {
+      await Supabase.instance.client
+          .from('friendships')
+          .insert({'requester': uid, 'addressee': to.id, 'status': 'pending'});
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('sendFriendRequest: $e');
+      return false;
+    }
+  }
+
+  Future<bool> acceptFriendRequest(Friendship f) async {
+    if (!_clientReady) return false;
+    try {
+      await Supabase.instance.client
+          .from('friendships')
+          .update({'status': 'accepted'}).eq('id', f.id);
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('acceptFriendRequest: $e');
+      return false;
+    }
+  }
+
+  /// Declines, cancels, or unfriends: all three delete the row.
+  Future<bool> removeFriendship(Friendship f) async {
+    if (!_clientReady) return false;
+    try {
+      await Supabase.instance.client.from('friendships').delete().eq('id', f.id);
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('removeFriendship: $e');
+      return false;
+    }
+  }
+
+  /// Players to suggest: discoverable, not me, not already connected,
+  /// most active first.
+  Future<List<PublicProfile>> suggestedPlayers() async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null) return [];
+    try {
+      final res = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('discoverable', true)
+          .neq('id', uid)
+          .order('current_streak', ascending: false)
+          .limit(30) as List;
+      final connected = _friendships.map((f) => f.other.id).toSet();
+      return res
+          .map((e) => PublicProfile.fromJson(e as Map<String, dynamic>))
+          .where((p) => !connected.contains(p.id))
+          .take(15)
+          .toList();
+    } catch (e) {
+      debugPrint('suggestedPlayers: $e');
+      return [];
+    }
   }
 
   Future<PublicProfile?> getProfileByUsername(String username) async {
-    final results = await searchProfiles(username);
-    if (results.isNotEmpty) return results.first;
-    return null;
+    if (!_clientReady) return null;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('username', username.toLowerCase())
+          .maybeSingle();
+      return row == null ? null : PublicProfile.fromJson(row);
+    } catch (e) {
+      debugPrint('getProfileByUsername: $e');
+      return null;
+    }
   }
+
 
   void addFriend(String username) {
     if (!_friendsList.contains(username) && username != _currentUsername) {
