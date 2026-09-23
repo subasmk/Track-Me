@@ -14,6 +14,7 @@ import 'package:trackme/models/goal.dart';
 import 'package:trackme/models/learning_note.dart';
 import 'package:trackme/models/quest.dart';
 import 'package:trackme/models/quest_item.dart';
+import 'package:trackme/screens/home/home_screen.dart';
 import 'package:trackme/screens/profile/profile_screen.dart';
 import 'package:trackme/services/goal_service.dart';
 import 'package:trackme/services/hive_service.dart';
@@ -49,7 +50,8 @@ void main() {
     if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(QuestItemAdapter());
   });
 
-  testWidgets('profile', (tester) async {
+  Future<void> shoot(WidgetTester tester, Widget home, String name,
+      {bool seed = true, bool scroll = false}) async {
     AppClock.set(() => now);
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -71,13 +73,16 @@ void main() {
             items: [QuestItem(id: '$id-1', name: 'Do it', target: 1, unit: 'x')],
             createdAt: now.subtract(const Duration(days: 40)),
             completionHistory: days(streak), focusMinutes: focus);
-      for (final quest in [
+      if (seed) {
+      await Hive.box<Goal>(HiveBoxes.goals).put('g', Goal(id: 'g', title: 'Learn Flutter', emoji: '📐', dailyMinutes: 30, streak: 4, longestStreak: 9));
+      }
+      for (final quest in [if (seed) ...[
         q('w', 'Morning Workout', '💪', 'Fitness', 12, 21, 340),
         q('r', 'Read 20 pages', '📚', 'Learning', 8, 15, 210),
         q('m', 'Meditation', '🧘', 'Mindfulness', 30, 30, 150),
         q('c', 'Code practice', '💻', 'Learning', 5, 9, 480),
         q('run', 'Evening Run', '🏃', 'Fitness', 3, 11, 90),
-      ]) {
+      ]]) {
         await qbox.put(quest.id, quest);
       }
       final questService = QuestService(box: qbox, progression: progression);
@@ -90,16 +95,33 @@ void main() {
           ChangeNotifierProvider<ProgressionService>.value(value: progression),
         ],
         child: MaterialApp(
-            debugShowCheckedModeBanner: false, theme: AppTheme.dark, home: const ProfileScreen()),
+            debugShowCheckedModeBanner: false, theme: AppTheme.dark, home: home),
       );
     });
     await tester.pumpWidget(app);
-    await tester.pumpAndSettle();
-    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile.png'));
+    await tester.runAsync(() async {
+      for (final e in find.byType(Image).evaluate()) {
+        await precacheImage((e.widget as Image).image, e);
+      }
+    });
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
+    if (scroll) {
     await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
-    await tester.pumpAndSettle();
-    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_scrolled.png'));
-    await tester.runAsync(Hive.close);
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/${name}_scrolled.png'));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+    await tester.runAsync(() => Future.any([Hive.close(), Future<void>.delayed(const Duration(seconds: 3))]));
     tester.view.reset();
-  });
+  }
+
+  testWidgets('profile', (t) => shoot(t, const ProfileScreen(), 'profile', scroll: true));
+  testWidgets('home', (t) => shoot(t, const HomeScreen(), 'home'));
+  testWidgets('home new user', (t) => shoot(t, const HomeScreen(), 'home_new', seed: false));
 }

@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
 import '../../services/goal_service.dart';
+import '../../services/progression_service.dart';
+import '../../services/quest_service.dart';
+import '../../utils/app_clock.dart';
+import '../../widgets/system_ui.dart';
 import '../../services/settings_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -8,7 +13,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/date_utils_x.dart';
 import '../../widgets/streak_card.dart';
 import '../../widgets/goal_list_card.dart';
-import '../../widgets/sloth_mascot.dart';
+import '../../widgets/sloth_sticker.dart';
 import '../add_goal/add_goal_screen.dart';
 import '../goal_detail/goal_detail_screen.dart';
 import '../notes/notes_screen.dart';
@@ -28,34 +33,38 @@ class HomeScreen extends StatelessWidget {
     final settings = context.watch<SettingsService>();
     final goals = goalService.goals;
 
-    // Overall streak shown on the hero card = the longest *current* streak
-    // across all goals, so the headline number reflects whichever goal the
-    // user is most consistent with right now.
-    final overallStreak =
-        goals.isEmpty ? 0 : goals.map((g) => g.streak).reduce((a, b) => a > b ? a : b);
+    final quests = context.watch<QuestService>().quests;
+    final progression = context.watch<ProgressionService>();
+    final now = AppClock.now();
 
-    // Which weekdays (Sun=0..Sat=6) this week had at least one goal
-    // completed, for the streak card's checkmark strip.
-    final week = DateUtilsX.weekDates(DateTime.now());
+    // Headline streak = the best *current* streak across goals and quests.
+    final current = [...goals.map((g) => g.streak), ...quests.map((q) => q.streak)];
+    final bests = [...goals.map((g) => g.longestStreak), ...quests.map((q) => q.longestStreak)];
+    final overallStreak = current.isEmpty ? 0 : current.reduce((a, b) => a > b ? a : b);
+    final bestStreak = bests.isEmpty ? 0 : bests.reduce((a, b) => a > b ? a : b);
+    final doneToday = goals.any((g) => g.isCompletedToday) || quests.any((q) => q.isCompletedToday);
+    final hadHistory = bestStreak > 0;
+
+    // Days this week (Sun=0..Sat=6) with at least one goal or quest done.
+    final week = DateUtilsX.weekDates(now);
     final completedIndices = <int>{};
     for (var i = 0; i < 7; i++) {
       final day = week[i];
-      final hasCompletion = goals.any(
-        (g) => g.notes.any((n) => DateUtilsX.isSameDay(n.date, day)),
-      );
-      if (hasCompletion) completedIndices.add(i);
+      final hit = goals.any((g) => g.notes.any((n) => DateUtilsX.isSameDay(n.date, day))) ||
+          quests.any((q) => q.completionHistory.any((d) => DateUtilsX.isSameDay(d, day)));
+      if (hit) completedIndices.add(i);
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+      backgroundColor: SysColors.bg,
+      body: SysBackground(child: SafeArea(
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-                child: _TopBar(userName: settings.userName),
+                child: _TopBar(settings: settings, level: progression.level),
               ),
             ),
             SliverToBoxAdapter(
@@ -64,7 +73,9 @@ class HomeScreen extends StatelessWidget {
                     AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
                 child: StreakCard(
                   streakDays: overallStreak,
-                  userName: settings.userName,
+                  bestStreak: bestStreak,
+                  doneToday: doneToday,
+                  hadHistory: hadHistory,
                   completedWeekdayIndices: completedIndices,
                 ),
               ),
@@ -119,7 +130,7 @@ class HomeScreen extends StatelessWidget {
             const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
-      ),
+      )),
       bottomNavigationBar: _BottomNav(context),
     );
   }
@@ -130,26 +141,64 @@ class HomeScreen extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _TopBar extends StatelessWidget {
-  final String userName;
-  const _TopBar({required this.userName});
+  final SettingsService settings;
+  final int level;
+  const _TopBar({required this.settings, required this.level});
+
+  String get _greeting {
+    final h = AppClock.now().hour;
+    return h < 12 ? 'GOOD MORNING' : h < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final photo = settings.photoPath;
+    final hasPhoto = photo != null && File(photo).existsSync();
+    final name = settings.fullName.isNotEmpty && settings.fullName != 'Daily Tracker'
+        ? settings.fullName
+        : settings.userName;
     return Row(
       children: [
+        GestureDetector(
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          child: Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: SysColors.cyan, width: 1.5),
+              boxShadow: [BoxShadow(color: SysColors.cyan.withValues(alpha: 0.35), blurRadius: 10)],
+            ),
+            child: CircleAvatar(
+              radius: 22,
+              backgroundColor: SysColors.panelTop,
+              backgroundImage: hasPhoto ? FileImage(File(photo)) : null,
+              child: hasPhoto
+                  ? null
+                  : Text(name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                      style: SysText.header.copyWith(fontSize: 18, letterSpacing: 0)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Hello, $userName 👋', style: AppTextStyles.title),
-              Text('Keep the streak alive!',
-                  style: AppTextStyles.caption),
+              Text(_greeting, style: SysText.label.copyWith(fontSize: 10)),
+              const SizedBox(height: 2),
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SysText.body.copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
+              Text('LV $level  ·  RANK ${SysRank.rank(level)}',
+                  style: SysText.label.copyWith(color: SysColors.cyan, fontSize: 10)),
             ],
           ),
         ),
         IconButton(
           icon: const Icon(Icons.search_rounded,
-              color: AppColors.purpleLight),
+              color: SysColors.cyanSoft),
           tooltip: 'Search & Friends',
           onPressed: () => Navigator.push(
             context,
@@ -158,7 +207,7 @@ class _TopBar extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.emoji_events_outlined,
-              color: AppColors.textSecondary),
+              color: SysColors.cyanSoft),
           tooltip: 'Badges',
           onPressed: () => Navigator.push(
             context,
@@ -167,7 +216,7 @@ class _TopBar extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.settings_outlined,
-              color: AppColors.textSecondary),
+              color: SysColors.cyanSoft),
           tooltip: 'Settings',
           onPressed: () => Navigator.push(
             context,
@@ -219,7 +268,7 @@ class _EmptyState extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const SlothMascot(mood: SlothMood.idle, size: 120),
+        const SlothStickerView(sticker: SlothSticker.sleepy, size: 130, glow: false),
         const SizedBox(height: AppSpacing.md),
         Text('No goals yet', style: AppTextStyles.title),
         const SizedBox(height: 6),
