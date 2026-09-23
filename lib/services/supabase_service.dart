@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,10 +16,20 @@ class SupabaseService extends ChangeNotifier {
   static const String defaultUrl = 'https://ceckjlbfwwjdhuffsmta.supabase.co';
   static const String defaultAnonKey = 'sb_publishable_jQ20Rs4lNnGCxP0xMuRcpg_pLPDH69e';
 
+  /// Deep link the confirmation / magic-link emails send the user back to.
+  /// Must also be listed under Auth > URL Configuration > Redirect URLs in
+  /// the Supabase dashboard, and matches the intent filter in
+  /// AndroidManifest.xml.
+  static const String authRedirectUrl = 'com.trackme.tracker://login-callback';
+
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
-  User? get currentUser => _isInitialized ? Supabase.instance.client.auth.currentUser : null;
+  /// False when Supabase could not start (e.g. no network on first launch).
+  bool _clientReady = false;
+  StreamSubscription<AuthState>? _authSub;
+
+  User? get currentUser => _clientReady ? Supabase.instance.client.auth.currentUser : null;
   bool get isLoggedIn => currentUser != null;
 
   String _currentUsername = 'Learner';
@@ -43,6 +54,14 @@ class SupabaseService extends ChangeNotifier {
         url: finalUrl,
         anonKey: finalKey,
       );
+      _clientReady = true;
+      // Sign-in can also complete outside our own calls: when the user taps
+      // the confirmation link in their email, the app is opened through
+      // authRedirectUrl and supabase_flutter exchanges it for a session.
+      // Re-render so the app leaves the auth screen right away.
+      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+        notifyListeners();
+      });
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
@@ -53,11 +72,12 @@ class SupabaseService extends ChangeNotifier {
   }
 
   Future<AuthResponse?> signUp({required String email, required String password}) async {
-    if (!_isInitialized) return null;
+    if (!_clientReady) return null;
     try {
       final res = await Supabase.instance.client.auth.signUp(
         email: email.trim(),
         password: password.trim(),
+        emailRedirectTo: authRedirectUrl,
       );
       notifyListeners();
       return res;
@@ -66,8 +86,18 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
+  /// Sends the sign-up confirmation email again.
+  Future<void> resendConfirmation(String email) async {
+    if (!_clientReady) return;
+    await Supabase.instance.client.auth.resend(
+      type: OtpType.signup,
+      email: email.trim(),
+      emailRedirectTo: authRedirectUrl,
+    );
+  }
+
   Future<AuthResponse?> signIn({required String email, required String password}) async {
-    if (!_isInitialized) return null;
+    if (!_clientReady) return null;
     try {
       final res = await Supabase.instance.client.auth.signInWithPassword(
         email: email.trim(),
@@ -80,8 +110,14 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> signOut() async {
-    if (_isInitialized) {
+    if (_clientReady) {
       try {
         await Supabase.instance.client.auth.signOut();
       } catch (_) {}
@@ -159,7 +195,7 @@ class SupabaseService extends ChangeNotifier {
       mainTasks: mainTasks,
     );
 
-    if (_isInitialized) {
+    if (_clientReady) {
       try {
         await Supabase.instance.client.from('profiles').upsert(profile.toJson());
       } catch (e) {
@@ -172,7 +208,7 @@ class SupabaseService extends ChangeNotifier {
   Future<List<PublicProfile>> searchProfiles(String query) async {
     final q = query.trim().toLowerCase();
 
-    if (_isInitialized) {
+    if (_clientReady) {
       try {
         if (q.isEmpty) {
           final res = await Supabase.instance.client

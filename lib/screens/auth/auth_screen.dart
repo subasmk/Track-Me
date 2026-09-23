@@ -56,9 +56,18 @@ class _AuthScreenState extends State<AuthScreen> {
         if (mounted) {
           if (res?.session == null && res?.user != null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Check your email to verify your account.'),
-                duration: Duration(seconds: 5),
+              SnackBar(
+                content: const Text(
+                    'Check your email and tap the link on this phone. It opens TrackMe and signs you in.'),
+                duration: const Duration(seconds: 8),
+                action: SnackBarAction(
+                  label: 'Resend',
+                  onPressed: () async {
+                    try {
+                      await supabase.resendConfirmation(email);
+                    } catch (_) {}
+                  },
+                ),
               ),
             );
           } else if (res?.session != null) {
