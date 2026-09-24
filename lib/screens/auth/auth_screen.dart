@@ -82,9 +82,19 @@ class _AuthScreenState extends State<AuthScreen> {
             e.code == 'over_email_send_rate_limit' ||
             e.message.toLowerCase().contains('rate limit');
 
-        final userMessage = isRateLimit
-            ? 'Too many verification emails were requested. Please wait and try again later.'
-            : e.message;
+        final msg = e.message.toLowerCase();
+        final String userMessage;
+        if (isRateLimit) {
+          userMessage = 'Too many verification emails were requested. Please wait and try again later.';
+        } else if (e.code == 'email_not_confirmed' || msg.contains('email not confirmed')) {
+          userMessage = 'This email is not confirmed yet. Tap the link in the TrackMe email, or ask the app owner to confirm the account.';
+        } else if (e.code == 'invalid_credentials' || msg.contains('invalid login credentials')) {
+          userMessage = 'Wrong email or password.';
+        } else if (e.code == 'user_already_exists' || msg.contains('already registered')) {
+          userMessage = 'An account with this email already exists. Sign in instead.';
+        } else {
+          userMessage = e.message;
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
