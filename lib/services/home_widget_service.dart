@@ -14,11 +14,16 @@ import '../utils/date_utils_x.dart';
 /// - `TrackMeOverviewWidgetProvider` — top goals overview
 /// - `TrackMeQuestWidgetProvider` — active quest summary
 class HomeWidgetService {
+  // The widget providers live in the Kotlin package com.trackme.app, but the
+  // app id is com.trackme.tracker. home_widget resolves a bare class name
+  // against the app id, so it looked for com.trackme.tracker.TrackMe... and
+  // every pin request and widget refresh from the app failed. Always pass
+  // the fully qualified class name.
   HomeWidgetService._();
 
-  static const String androidGoalWidgetProvider = 'TrackMeGoalWidgetProvider';
-  static const String androidOverviewWidgetProvider = 'TrackMeOverviewWidgetProvider';
-  static const String androidQuestWidgetProvider = 'TrackMeQuestWidgetProvider';
+  static const String androidGoalWidgetProvider = 'com.trackme.app.TrackMeGoalWidgetProvider';
+  static const String androidOverviewWidgetProvider = 'com.trackme.app.TrackMeOverviewWidgetProvider';
+  static const String androidQuestWidgetProvider = 'com.trackme.app.TrackMeQuestWidgetProvider';
 
   static const String keyGoalsJson = 'goals_json';
   static const String keyUserName = 'user_name';
@@ -66,8 +71,8 @@ class HomeWidgetService {
       ]);
 
       await Future.wait([
-        HomeWidget.updateWidget(androidName: androidGoalWidgetProvider),
-        HomeWidget.updateWidget(androidName: androidOverviewWidgetProvider),
+        HomeWidget.updateWidget(qualifiedAndroidName: androidGoalWidgetProvider),
+        HomeWidget.updateWidget(qualifiedAndroidName: androidOverviewWidgetProvider),
       ]);
     } catch (e) {
       // No home screen widget has been added yet, or the platform channel
@@ -158,7 +163,7 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>(
             keyQuestSyncedAt, DateTime.now().toIso8601String()),
       ]);
-      await HomeWidget.updateWidget(androidName: androidQuestWidgetProvider);
+      await HomeWidget.updateWidget(qualifiedAndroidName: androidQuestWidgetProvider);
       return true;
     } catch (e) {
       debugPrint('HomeWidgetService.syncQuests failed: $e');
@@ -189,7 +194,7 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>(
             keyGoalPendingPinAt, DateTime.now().millisecondsSinceEpoch.toString()),
       ]);
-      await HomeWidget.requestPinWidget(androidName: androidGoalWidgetProvider);
+      await HomeWidget.requestPinWidget(qualifiedAndroidName: androidGoalWidgetProvider);
       return PinWidgetResult.requested;
     } catch (e) {
       debugPrint('HomeWidgetService.pinGoalWidget failed: $e');
@@ -206,8 +211,8 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>(keyWidgetBgPath, bgPath),
       ]);
       await Future.wait([
-        HomeWidget.updateWidget(androidName: androidGoalWidgetProvider),
-        HomeWidget.updateWidget(androidName: androidQuestWidgetProvider),
+        HomeWidget.updateWidget(qualifiedAndroidName: androidGoalWidgetProvider),
+        HomeWidget.updateWidget(qualifiedAndroidName: androidQuestWidgetProvider),
       ]);
     } catch (e) {
       debugPrint('HomeWidgetService.saveWidgetStyle failed: $e');
@@ -252,7 +257,7 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>(
             keyQuestPendingPinAt, DateTime.now().millisecondsSinceEpoch.toString()),
       ]);
-      await HomeWidget.requestPinWidget(androidName: androidQuestWidgetProvider);
+      await HomeWidget.requestPinWidget(qualifiedAndroidName: androidQuestWidgetProvider);
       return PinWidgetResult.requested;
     } catch (e) {
       debugPrint('HomeWidgetService.pinQuestWidget failed: $e');
