@@ -176,12 +176,12 @@ object DuoWidget {
             context, MainActivity::class.java, android.net.Uri.parse(uri)
         )
 
-    private fun checkOffIntent(context: Context, kind: String, id: String): PendingIntent {
+    internal fun checkOffIntent(context: Context, kind: String, id: String): PendingIntent {
         val intent = Intent(context, WidgetCheckOffReceiver::class.java).apply {
             action = WidgetCheckOffReceiver.ACTION
             putExtra(WidgetCheckOffReceiver.EXTRA_KIND, kind)
             putExtra(WidgetCheckOffReceiver.EXTRA_ID, id)
-            data = android.net.Uri.parse("trackme://checkoff/$kind/$id")
+            data = android.net.Uri.parse("trackme://checkoff/$kind/${android.net.Uri.encode(id)}")
         }
         return PendingIntent.getBroadcast(
             context, "$kind:$id".hashCode(), intent,

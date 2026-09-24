@@ -118,6 +118,15 @@ class HomeWidgetService {
           'nextTask': q.nextItem?.name ?? '',
           'timeRange': q.timeRange ?? '',
           'days': q.daysLabel,
+          'items': [
+            for (final i in q.items)
+              {
+                'id': i.id,
+                'name': i.name,
+                'label': i.targetLabel,
+                'done': q.isCompletedToday || i.isDone,
+              }
+          ],
           'last5': last5Days(DateTime.now())
               .map((d) => q.completionHistory.any((c) => DateUtilsX.isSameDay(c, d)))
               .toList(),
@@ -226,7 +235,7 @@ class HomeWidgetService {
     final out = <({String kind, String id})>[];
     for (final e in (jsonDecode(raw) as List).cast<String>()) {
       final parts = e.split('|');
-      if (parts.length == 3 && parts[2] == today && (parts[0] == 'goal' || parts[0] == 'quest')) {
+      if (parts.length == 3 && parts[2] == today && (parts[0] == 'goal' || parts[0] == 'quest' || parts[0] == 'quest_item')) {
         out.add((kind: parts[0], id: parts[1]));
       }
     }

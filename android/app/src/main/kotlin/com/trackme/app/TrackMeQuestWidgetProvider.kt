@@ -89,49 +89,27 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
                 findQuest(widgetData.getString(KEY_ALL_JSON, null), binding)
             } else null
 
-            val model = if (quest != null) {
-                val id = quest.optString("id")
-                DuoWidget.Model(
-                    kind = "quest",
-                    id = if (quest.optBoolean("scheduledToday", true)) id else "",
-                    title = "${quest.optString("emoji", "⚔️")} ${quest.optString("title", "Quest")}",
-                    streak = quest.optInt("streak", 0),
-                    done = quest.optBoolean("completedToday", false),
-                    themeId = null,
-                    last5 = DuoWidget.last5From(quest.optJSONArray("last5")),
-                    openUri = "trackme://quest?id=${Uri.encode(id)}",
+            val views = if (binding != QuestWidgetConfig.TODAY && quest != null) {
+                QuestSysWidget.render(
+                    context, appWidgetManager, appWidgetId, quest, null,
+                    "", "", QuestSysWidget.openUriFor(quest.optString("id"))
                 )
             } else {
-                // Today's quests: the check button clears the next open quest.
+                // Today's quests: show the next open quest, or the day's result.
                 val today = parse(widgetData.getString(KEY_TODAY_JSON, null))
                 val list = (0 until today.length()).mapNotNull { today.optJSONObject(it) }
                 val next = list.firstOrNull { !it.optBoolean("completedToday", false) }
                 val completed = list.count { it.optBoolean("completedToday", false) }
-                val allDone = list.isNotEmpty() && next == null
-                val best = list.maxOfOrNull { it.optInt("streak", 0) } ?: 0
-                val title = when {
-                    list.isEmpty() -> "No quests today"
-                    next == null -> "All $completed quests done"
-                    else -> "${next.optString("emoji", "⚔️")} ${next.optString("title", "Quest")}  ·  $completed/${list.size}"
-                }
-                // Strip: a day counts when every scheduled quest was done.
-                val last5 = BooleanArray(5) { i ->
-                    list.isNotEmpty() && list.all { it.optJSONArray("last5")?.optBoolean(i, false) ?: false }
-                }
-                DuoWidget.Model(
-                    kind = "quest",
-                    id = next?.optString("id") ?: "",
-                    title = title,
-                    streak = best,
-                    done = allDone,
-                    themeId = null,
-                    last5 = last5,
-                    openUri = "trackme://quests",
+                val label = if (list.isEmpty()) null else "$completed/${list.size} TODAY"
+                QuestSysWidget.render(
+                    context, appWidgetManager, appWidgetId,
+                    next, label,
+                    if (list.isEmpty()) "NO QUESTS TODAY" else "ALL QUESTS CLEAR",
+                    if (list.isEmpty()) "Rest day. Tap to plan a quest." else "Every quest is done. Streaks are safe.",
+                    if (next != null) QuestSysWidget.openUriFor(next.optString("id")) else "trackme://quests"
                 )
             }
-            appWidgetManager.updateAppWidget(
-                appWidgetId, DuoWidget.render(context, appWidgetManager, appWidgetId, widgetData, model)
-            )
+            appWidgetManager.updateAppWidget(appWidgetId, views)
         }
 
         private fun resolveBinding(context: Context, appWidgetId: Int, widgetData: SharedPreferences): String {
@@ -145,84 +123,6 @@ class TrackMeQuestWidgetProvider : HomeWidgetProvider() {
                 widgetData.edit().remove(KEY_PENDING_PIN_ID).remove(KEY_PENDING_PIN_AT).apply()
             }
             return binding
-        }
-
-        private fun renderToday(views: RemoteViews, widgetData: SharedPreferences) {
-            val completed = widgetData.getInt(KEY_COMPLETED_COUNT, 0)
-            val total = widgetData.getInt(KEY_TOTAL_COUNT, 0)
-            val today = parse(widgetData.getString(KEY_TODAY_JSON, null))
-            views.setTextViewText(R.id.quest_header, "⚔️  TODAY'S QUESTS")
-            views.setInt(R.id.quest_widget_root, "setBackgroundResource", R.drawable.bg_widget_quest)
-
-            if (total == 0) {
-                views.setTextViewText(R.id.quest_summary, "Rest day")
-                views.setProgressBar(R.id.quest_progress, 100, 0, false)
-                views.setTextViewText(R.id.quest_title, "No quests today. Tap to plan one.")
-                views.setTextViewText(R.id.quest_next, "")
-                setChip(views, R.id.quest_streak, "")
-                setChip(views, R.id.quest_difficulty, "")
-                views.setImageViewResource(R.id.quest_mascot, if (hour() >= 22 || hour() < 5) R.drawable.sloth_sleepy else R.drawable.sloth_calm)
-                return
-            }
-            val percent = completed * 100 / total
-            val allDone = completed >= total
-            views.setTextViewText(R.id.quest_summary, "$completed / $total")
-            views.setProgressBar(R.id.quest_progress, 100, percent, false)
-            val next = (0 until today.length()).map { today.getJSONObject(it) }
-                .firstOrNull { !it.optBoolean("completedToday", false) }
-            val best = widgetData.getInt("quest_best_streak", 0)
-            if (next == null || allDone) {
-                views.setInt(R.id.quest_widget_root, "setBackgroundResource", R.drawable.bg_widget_quest_done)
-                views.setTextViewText(R.id.quest_title, "All quests done! 🎉")
-                views.setTextViewText(R.id.quest_next, "Streaks are safe for today")
-                setChip(views, R.id.quest_streak, if (best > 0) "🔥 $best best" else "")
-                setChip(views, R.id.quest_difficulty, "")
-                views.setImageViewResource(R.id.quest_mascot, R.drawable.sloth_cheering)
-            } else {
-                val time = next.optString("timeRange", "")
-                views.setTextViewText(R.id.quest_title, "${next.optString("emoji", "⚔️")} ${next.optString("title", "Quest")}")
-                val task = next.optString("nextTask", "")
-                views.setTextViewText(R.id.quest_next, listOf(if (task.isNotEmpty()) "Next: $task" else "", time).filter { it.isNotEmpty() }.joinToString("  ·  "))
-                val streak = next.optInt("streak", 0)
-                setChip(views, R.id.quest_streak, if (streak > 0) "🔥 $streak" else "")
-                setChip(views, R.id.quest_difficulty, "+${next.optInt("xp", 0)} XP")
-                views.setImageViewResource(R.id.quest_mascot, mascotFor(percent, false, hour(), next.optString("type")))
-            }
-        }
-
-        private fun renderSingleQuest(views: RemoteViews, quest: JSONObject) {
-            val done = quest.optBoolean("completedToday", false)
-            val scheduled = quest.optBoolean("scheduledToday", true)
-            val count = quest.optInt("itemCount", 0)
-            val itemsDone = quest.optInt("itemsDone", 0)
-            val progress = quest.optInt("progress", 0)
-            views.setTextViewText(R.id.quest_header, "${quest.optString("emoji", "⚔️")}  ${quest.optString("title", "Quest").uppercase()}")
-            views.setInt(R.id.quest_widget_root, "setBackgroundResource", if (done) R.drawable.bg_widget_quest_done else R.drawable.bg_widget_quest)
-            views.setTextViewText(
-                R.id.quest_summary,
-                when {
-                    done -> "Done ✓"
-                    !scheduled -> "Rest day"
-                    count > 0 -> "$itemsDone / $count"
-                    else -> "To do"
-                }
-            )
-            views.setProgressBar(R.id.quest_progress, 100, progress, false)
-            val task = quest.optString("nextTask", "")
-            views.setTextViewText(
-                R.id.quest_title,
-                when {
-                    done -> "Nice work! See you tomorrow."
-                    !scheduled -> "Scheduled ${quest.optString("days", "")}"
-                    task.isNotEmpty() -> "Next: $task"
-                    else -> "Tap to start"
-                }
-            )
-            views.setTextViewText(R.id.quest_next, quest.optString("timeRange", ""))
-            val streak = quest.optInt("streak", 0)
-            setChip(views, R.id.quest_streak, if (streak > 0) "🔥 $streak" else "")
-            setChip(views, R.id.quest_difficulty, quest.optString("difficulty", ""))
-            views.setImageViewResource(R.id.quest_mascot, mascotFor(progress, done, hour(), quest.optString("type")))
         }
 
         private fun launch(context: Context, uri: String) =

@@ -106,7 +106,12 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
   Future<void> _applyWidgetCheckOffs() async {
     final items = await HomeWidgetService.takePendingCheckOffs();
     for (final item in items) {
-      if (item.kind == 'quest') {
+      if (item.kind == 'quest_item') {
+        final sep = item.id.indexOf(':');
+        if (sep > 0) {
+          await _questService.toggleQuestItem(item.id.substring(0, sep), item.id.substring(sep + 1));
+        }
+      } else if (item.kind == 'quest') {
         await _questService.completeToday(item.id);
       } else {
         final goal = _goalService.goalById(item.id);

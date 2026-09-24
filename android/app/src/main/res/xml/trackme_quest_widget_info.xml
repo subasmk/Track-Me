@@ -18,8 +18,8 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
-    android:initialLayout="@layout/widget_duo"
-    android:previewLayout="@layout/widget_duo"
+    android:initialLayout="@layout/widget_quest_sys"
+    android:previewLayout="@layout/widget_quest_sys"
     android:configure="com.trackme.app.QuestWidgetConfigureActivity"
     android:widgetFeatures="reconfigurable|configuration_optional"
     android:description="@string/quest_widget_label">
