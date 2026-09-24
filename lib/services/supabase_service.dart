@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -7,21 +9,119 @@ import '../models/team_quest.dart';
 import '../models/goal.dart';
 import '../models/quest.dart';
 import '../models/quest_item.dart';
+import 'account_data_service.dart';
 import 'hive_service.dart';
 import 'goal_service.dart';
 import 'quest_service.dart';
+
+/// What the Settings screen can truthfully say about cloud sync.
+enum CloudStatus {
+  /// Checking right now.
+  checking,
+  /// The Supabase client couldn't start (no network at launch).
+  offline,
+  /// Not signed in: everything stays on this phone.
+  signedOut,
+  /// Signed in, but the profiles table doesn't exist in the project yet
+  /// (supabase/schema.sql hasn't been run).
+  notSetUp,
+  /// Signed in and the profile row is reachable.
+  synced,
+  /// Signed in, but the check failed (network or server error).
+  error,
+}
 
 class SupabaseService extends ChangeNotifier {
   static const String defaultUrl = 'https://ceckjlbfwwjdhuffsmta.supabase.co';
   static const String defaultAnonKey = 'sb_publishable_jQ20Rs4lNnGCxP0xMuRcpg_pLPDH69e';
 
+  /// Deep link the confirmation / magic-link emails send the user back to.
+  /// Must also be listed under Auth > URL Configuration > Redirect URLs in
+  /// the Supabase dashboard, and matches the intent filter in
+  /// AndroidManifest.xml.
+  static const String authRedirectUrl = 'com.trackme.tracker://login-callback';
+
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
-  User? get currentUser => _isInitialized ? Supabase.instance.client.auth.currentUser : null;
+  /// False when Supabase could not start (e.g. no network on first launch).
+  bool _clientReady = false;
+  StreamSubscription<AuthState>? _authSub;
+
+  User? get currentUser => _clientReady ? Supabase.instance.client.auth.currentUser : null;
   bool get isLoggedIn => currentUser != null;
+  bool get clientReady => _clientReady;
+  String? get email => currentUser?.email ?? _debugEmail;
+
+  CloudStatus _cloudStatus = CloudStatus.checking;
+  CloudStatus get cloudStatus => _cloudStatus;
+
+  String? _debugEmail;
+
+  /// Screenshot tests only: show a signed-in account and a fixed sync state.
+  @visibleForTesting
+  void debugSetAccount({required String email, required CloudStatus status}) {
+    _debugEmail = email;
+    _cloudStatus = status;
+  }
+
+  /// Last time stats were written to the cloud profile from this phone.
+  DateTime? get lastSyncedAt {
+    final raw = HiveService.settingsBox.get('cloud_last_synced_at') as String?;
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  /// Works out the real sync state instead of assuming it.
+  Future<CloudStatus> checkCloudStatus() async {
+    _cloudStatus = CloudStatus.checking;
+    notifyListeners();
+    final uid = currentUser?.id;
+    if (!_clientReady) {
+      _cloudStatus = CloudStatus.offline;
+    } else if (uid == null) {
+      _cloudStatus = CloudStatus.signedOut;
+    } else {
+      try {
+        await Supabase.instance.client.from('profiles').select('id').eq('id', uid).maybeSingle();
+        _cloudStatus = CloudStatus.synced;
+      } on PostgrestException catch (e) {
+        // PGRST205 / 42P01: the table isn't there (schema not run yet).
+        final missing = e.code == 'PGRST205' || e.code == '42P01' ||
+            e.message.contains('Could not find the table');
+        _cloudStatus = missing ? CloudStatus.notSetUp : CloudStatus.error;
+      } catch (_) {
+        _cloudStatus = CloudStatus.error;
+      }
+    }
+    notifyListeners();
+    return _cloudStatus;
+  }
+
+  /// Permanently deletes the signed-in account (auth user, profile,
+  /// friendships) through the delete_my_account() function in
+  /// supabase/schema.sql, then signs out. Returns false if it failed.
+  Future<bool> deleteAccount() async {
+    if (!_clientReady || currentUser == null) return false;
+    final uid = currentUser!.id;
+    try {
+      final stored = HiveService.settingsBox.get(_keyCloudAvatarPath) as String?;
+      await Supabase.instance.client.storage
+          .from('avatars')
+          .remove(['$uid/avatar.jpg', if (stored != null) stored]);
+    } catch (_) {}
+    try {
+      await Supabase.instance.client.rpc('delete_my_account');
+    } catch (e) {
+      debugPrint('deleteAccount failed: $e');
+      return false;
+    }
+    await HiveService.settingsBox.delete('profile_done_$uid');
+    await signOut();
+    return true;
+  }
 
   String _currentUsername = 'Learner';
+  bool _healing = false;
   String get currentUsername => _currentUsername;
 
   List<String> _friendsList = [];
@@ -43,6 +143,15 @@ class SupabaseService extends ChangeNotifier {
         url: finalUrl,
         anonKey: finalKey,
       );
+      _clientReady = true;
+      // Sign-in can also complete outside our own calls: when the user taps
+      // the confirmation link in their email, the app is opened through
+      // authRedirectUrl and supabase_flutter exchanges it for a session.
+      // Re-render so the app leaves the auth screen right away.
+      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+        _onUserChanged();
+      });
+      await _onUserChanged();
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
@@ -53,11 +162,12 @@ class SupabaseService extends ChangeNotifier {
   }
 
   Future<AuthResponse?> signUp({required String email, required String password}) async {
-    if (!_isInitialized) return null;
+    if (!_clientReady) return null;
     try {
       final res = await Supabase.instance.client.auth.signUp(
         email: email.trim(),
         password: password.trim(),
+        emailRedirectTo: authRedirectUrl,
       );
       notifyListeners();
       return res;
@@ -66,8 +176,18 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
+  /// Sends the sign-up confirmation email again.
+  Future<void> resendConfirmation(String email) async {
+    if (!_clientReady) return;
+    await Supabase.instance.client.auth.resend(
+      type: OtpType.signup,
+      email: email.trim(),
+      emailRedirectTo: authRedirectUrl,
+    );
+  }
+
   Future<AuthResponse?> signIn({required String email, required String password}) async {
-    if (!_isInitialized) return null;
+    if (!_clientReady) return null;
     try {
       final res = await Supabase.instance.client.auth.signInWithPassword(
         email: email.trim(),
@@ -80,8 +200,188 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Per-account data on this phone
+  // ---------------------------------------------------------------------
+
+  /// Called after the live goals/quests/settings were swapped to another
+  /// account (or refilled from the cloud) so every service reloads.
+  VoidCallback? onLocalDataReplaced;
+
+  /// False while the signed-in account's data is not in the live boxes yet.
+  bool get dataReady {
+    final uid = currentUser?.id;
+    return uid == null || AccountDataService.isActive(uid);
+  }
+
+  /// An older build mixed two accounts' data on this phone; ask who owns it.
+  bool get needsOwnerChoice {
+    final uid = currentUser?.id;
+    return uid != null && AccountDataService.needsOwnerChoice(uid);
+  }
+
+  Future<void> resolveMixedData({required bool keepHere}) async {
+    final uid = currentUser?.id;
+    if (uid == null) return;
+    await AccountDataService.resolveMixed(uid, keepHere: keepHere);
+    _loadLocalState();
+    onLocalDataReplaced?.call();
+    await refreshProfileStatus();
+    notifyListeners();
+  }
+
+  String? _handledUid;
+  Future<void> _onUserChanged() async {
+    final uid = currentUser?.id;
+    if (uid != null && uid != _handledUid && !AccountDataService.needsOwnerChoice(uid)) {
+      _handledUid = uid;
+      if (!AccountDataService.isActive(uid)) {
+        await AccountDataService.activate(uid);
+        _loadLocalState();
+        onLocalDataReplaced?.call();
+      }
+    }
+    if (uid == null) _handledUid = null;
+    await refreshProfileStatus();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------
+  // Per-user profile (multi-user). Table + RLS: supabase/schema.sql
+  // ---------------------------------------------------------------------
+
+  static final usernamePattern = RegExp(r'^[a-z0-9_.]{3,20}$');
+
+  /// Whether the signed-in user has finished profile setup. Remembered per
+  /// user id on this phone, and confirmed against the cloud on sign-in.
+  bool get profileComplete {
+    final uid = currentUser?.id;
+    if (uid == null) return false;
+    return HiveService.settingsBox.get('profile_done_$uid') == true;
+  }
+
+  Future<void> _markProfileComplete() async {
+    final uid = currentUser?.id;
+    if (uid == null) return;
+    await HiveService.settingsBox.put('profile_done_$uid', true);
+    notifyListeners();
+  }
+
+  /// Marks setup done if a cloud profile already exists for this user
+  /// (e.g. signing in on a new phone).
+  Future<void> refreshProfileStatus() async {
+    final uid = currentUser?.id;
+    if (uid == null || profileComplete) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('username, full_name, bio')
+          .eq('id', uid)
+          .maybeSingle();
+      if (row != null) {
+        _currentUsername = row['username'] as String;
+        final box = HiveService.settingsBox;
+        await box.put('user_name', _currentUsername);
+        await box.put('full_name', (row['full_name'] as String?) ?? _currentUsername);
+        await box.put('user_bio', (row['bio'] as String?) ?? '');
+        _saveLocalState();
+        onLocalDataReplaced?.call();
+        await _markProfileComplete();
+      }
+    } catch (e) {
+      debugPrint('profile status check failed: $e');
+    }
+  }
+
+  /// true = free, false = taken, null = could not check (offline or the
+  /// cloud tables are not set up yet).
+  Future<bool?> isUsernameAvailable(String username) async {
+    if (!_clientReady) return null;
+    try {
+      final res = await Supabase.instance.client
+          .rpc('username_available', params: {'name': username.toLowerCase()});
+      return res as bool;
+    } catch (e) {
+      debugPrint('username check failed: $e');
+      return null;
+    }
+  }
+
+  /// Creates or updates the signed-in user's cloud profile. Throws
+  /// [UsernameTakenException] when someone else already has the username.
+  /// Returns false if the cloud isn't reachable/set up (saved locally only).
+  Future<bool> saveMyProfile({
+    required String username,
+    required String fullName,
+    required String bio,
+    String? avatarPath,
+  }) async {
+    final uid = currentUser?.id;
+    var cloudOk = false;
+    if (_clientReady && uid != null) {
+      // Save the profile row first, on its own: a photo problem must never
+      // stop the username from being claimed and the profile from showing
+      // up in search.
+      try {
+        await Supabase.instance.client.from('profiles').upsert({
+          'id': uid,
+          'username': username.toLowerCase(),
+          'full_name': fullName,
+          'bio': bio,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        cloudOk = true;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505') throw UsernameTakenException();
+        debugPrint('saveMyProfile: $e');
+      } catch (e) {
+        debugPrint('saveMyProfile: $e');
+      }
+      if (cloudOk && avatarPath != null && !avatarPath.startsWith('http')) {
+        await _uploadAvatar(uid, avatarPath);
+      }
+    }
+    _currentUsername = username.toLowerCase();
+    _saveLocalState();
+    await _markProfileComplete();
+    return cloudOk;
+  }
+
+  static const _keyCloudAvatarPath = 'cloud_avatar_path';
+
+  /// Uploads to a new file name each time (insert only, no overwrite), so it
+  /// works with the plain INSERT policy in schema.sql, then removes the old one.
+  Future<void> _uploadAvatar(String uid, String localPath) async {
+    try {
+      final file = File(localPath);
+      if (!await file.exists()) return;
+      final storage = Supabase.instance.client.storage.from('avatars');
+      final path = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await storage.upload(path, file,
+          fileOptions: const FileOptions(upsert: false, contentType: 'image/jpeg'));
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'avatar_url': storage.getPublicUrl(path)}).eq('id', uid);
+      final old = HiveService.settingsBox.get(_keyCloudAvatarPath) as String?;
+      await HiveService.settingsBox.put(_keyCloudAvatarPath, path);
+      if (old != null && old != path) {
+        try {
+          await storage.remove([old]);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('avatar upload failed: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> signOut() async {
-    if (_isInitialized) {
+    if (_clientReady) {
       try {
         await Supabase.instance.client.auth.signOut();
       } catch (_) {}
@@ -118,6 +418,11 @@ class SupabaseService extends ChangeNotifier {
   Future<void> syncLocalProfileToCloud({
     required List<Goal> goals,
     required List<Quest> quests,
+    bool shareQuests = true,
+    bool discoverable = true,
+    String? fullName,
+    String? bio,
+    String? photoPath,
   }) async {
     final maxStreak = goals.fold<int>(0, (prev, g) => g.streak > prev ? g.streak : prev);
     final longest = goals.fold<int>(0, (prev, g) => g.longestStreak > prev ? g.longestStreak : prev);
@@ -146,7 +451,8 @@ class SupabaseService extends ChangeNotifier {
       ));
     }
 
-    final userId = currentUser?.id ?? 'user_${_currentUsername.toLowerCase().replaceAll(' ', '_')}';
+    final userId = currentUser?.id;
+    if (userId == null || !profileComplete) return;
 
     final profile = PublicProfile(
       id: userId,
@@ -156,12 +462,39 @@ class SupabaseService extends ChangeNotifier {
       currentStreak: maxStreak,
       longestStreak: longest,
       badges: ['first_step', if (maxStreak >= 7) 'streak_7', if (maxStreak >= 14) 'streak_14'],
-      mainTasks: mainTasks,
+      mainTasks: shareQuests ? mainTasks : const [],
     );
 
-    if (_isInitialized) {
+    if (_clientReady) {
       try {
-        await Supabase.instance.client.from('profiles').upsert(profile.toJson());
+        final data = profile.toJson()
+          ..remove('id')
+          ..remove('username')
+          ..['discoverable'] = discoverable;
+        final rows = await Supabase.instance.client
+            .from('profiles')
+            .update(data)
+            .eq('id', userId)
+            .select('id');
+        if (rows.isEmpty && !_healing && _currentUsername != 'Learner') {
+          // Setup finished on this phone but the cloud row never got
+          // written (older builds dropped it when the photo upload failed).
+          _healing = true;
+          try {
+            await saveMyProfile(
+                username: _currentUsername,
+                fullName: fullName ?? _currentUsername,
+                bio: bio ?? '',
+                avatarPath: photoPath);
+            await Supabase.instance.client.from('profiles').update(data).eq('id', userId);
+          } on UsernameTakenException {
+            debugPrint('cloud profile repair: @$_currentUsername is taken');
+          } finally {
+            _healing = false;
+          }
+        }
+        await HiveService.settingsBox
+            .put('cloud_last_synced_at', DateTime.now().toIso8601String());
       } catch (e) {
         debugPrint('Supabase cloud sync error: $e');
       }
@@ -170,36 +503,171 @@ class SupabaseService extends ChangeNotifier {
   }
 
   Future<List<PublicProfile>> searchProfiles(String query) async {
-    final q = query.trim().toLowerCase();
-
-    if (_isInitialized) {
-      try {
-        if (q.isEmpty) {
-          final res = await Supabase.instance.client
-              .from('profiles')
-              .select()
-              .limit(20);
-          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
-        } else {
-          final res = await Supabase.instance.client
-              .from('profiles')
-              .select()
-              .ilike('username', '%$q%');
-          return (res as List).map((e) => PublicProfile.fromJson(e)).toList();
-        }
-      } catch (e) {
-        debugPrint('Supabase search profiles error: $e');
-      }
+    final q = query.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_. ]'), '');
+    if (!_clientReady || q.isEmpty) return [];
+    try {
+      var req = Supabase.instance.client
+          .from('profiles')
+          .select()
+          .or('username.ilike.%$q%,full_name.ilike.%$q%')
+          .eq('discoverable', true);
+      final uid = currentUser?.id;
+      if (uid != null) req = req.neq('id', uid);
+      final res = await req.order('current_streak', ascending: false).limit(30) as List;
+      return res.map((e) => PublicProfile.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('Supabase search profiles error: $e');
+      return [];
     }
+  }
 
-    return [];
+  // ---------------- friends (friendships table) ----------------
+
+  List<Friendship> _friendships = [];
+  List<Friendship> get friendships => List.unmodifiable(_friendships);
+  List<Friendship> get friends => _friendships.where((f) => f.accepted).toList();
+  List<Friendship> get incomingRequests =>
+      _friendships.where((f) => !f.accepted && f.incoming).toList();
+  List<Friendship> get outgoingRequests =>
+      _friendships.where((f) => !f.accepted && !f.incoming).toList();
+
+  Friendship? friendshipWith(String profileId) {
+    for (final f in _friendships) {
+      if (f.other.id == profileId) return f;
+    }
+    return null;
+  }
+
+  /// Screenshot tests only.
+  @visibleForTesting
+  void debugSetFriendships(List<Friendship> list) {
+    _friendships = list;
+  }
+
+  /// Loads my friendships and the profiles on the other side.
+  /// Returns false when the cloud isn't reachable or set up.
+  Future<bool> loadFriendships() async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null) return false;
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('friendships')
+          .select()
+          .or('requester.eq.$uid,addressee.eq.$uid') as List;
+      final otherIds = {
+        for (final r in rows) (r['requester'] == uid ? r['addressee'] : r['requester']) as String
+      }.toList();
+      final profiles = <String, PublicProfile>{};
+      if (otherIds.isNotEmpty) {
+        final ps = await client.from('profiles').select().inFilter('id', otherIds) as List;
+        for (final p in ps) {
+          final prof = PublicProfile.fromJson(p as Map<String, dynamic>);
+          profiles[prof.id] = prof;
+        }
+      }
+      _friendships = [
+        for (final r in rows)
+          if (profiles[r['requester'] == uid ? r['addressee'] : r['requester']] != null)
+            Friendship(
+              id: r['id'] as int,
+              other: profiles[r['requester'] == uid ? r['addressee'] : r['requester']]!,
+              accepted: r['status'] == 'accepted',
+              incoming: r['addressee'] == uid,
+            )
+      ];
+      _friendsList = friends.map((f) => f.other.username).toList();
+      _saveLocalState();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('loadFriendships: $e');
+      return false;
+    }
+  }
+
+  Future<bool> sendFriendRequest(PublicProfile to) async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null || to.id == uid) return false;
+    try {
+      await Supabase.instance.client
+          .from('friendships')
+          .insert({'requester': uid, 'addressee': to.id, 'status': 'pending'});
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('sendFriendRequest: $e');
+      return false;
+    }
+  }
+
+  Future<bool> acceptFriendRequest(Friendship f) async {
+    if (!_clientReady) return false;
+    try {
+      await Supabase.instance.client
+          .from('friendships')
+          .update({'status': 'accepted'}).eq('id', f.id);
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('acceptFriendRequest: $e');
+      return false;
+    }
+  }
+
+  /// Declines, cancels, or unfriends: all three delete the row.
+  Future<bool> removeFriendship(Friendship f) async {
+    if (!_clientReady) return false;
+    try {
+      await Supabase.instance.client.from('friendships').delete().eq('id', f.id);
+      await loadFriendships();
+      return true;
+    } catch (e) {
+      debugPrint('removeFriendship: $e');
+      return false;
+    }
+  }
+
+  /// Players to suggest: discoverable, not me, not already connected,
+  /// most active first.
+  Future<List<PublicProfile>> suggestedPlayers() async {
+    final uid = currentUser?.id;
+    if (!_clientReady || uid == null) return [];
+    try {
+      final res = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('discoverable', true)
+          .neq('id', uid)
+          .order('current_streak', ascending: false)
+          .limit(30) as List;
+      final connected = _friendships.map((f) => f.other.id).toSet();
+      return res
+          .map((e) => PublicProfile.fromJson(e as Map<String, dynamic>))
+          .where((p) => !connected.contains(p.id))
+          .take(15)
+          .toList();
+    } catch (e) {
+      debugPrint('suggestedPlayers: $e');
+      return [];
+    }
   }
 
   Future<PublicProfile?> getProfileByUsername(String username) async {
-    final results = await searchProfiles(username);
-    if (results.isNotEmpty) return results.first;
-    return null;
+    if (!_clientReady) return null;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('username', username.toLowerCase())
+          .maybeSingle();
+      return row == null ? null : PublicProfile.fromJson(row);
+    } catch (e) {
+      debugPrint('getProfileByUsername: $e');
+      return null;
+    }
   }
+
 
   void addFriend(String username) {
     if (!_friendsList.contains(username) && username != _currentUsername) {
@@ -292,3 +760,5 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 }
+
+class UsernameTakenException implements Exception {}

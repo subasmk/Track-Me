@@ -37,6 +37,16 @@ void main() {
     expect(today.first['progress'], 50);
     expect(today.first['nextTask'], 'Run');
     expect((data['all'] as List).length, 4);
+    expect(today.first['items'], [
+      {'id': 'a', 'name': 'Stretch', 'label': '1 reps', 'done': true},
+      {'id': 'b', 'name': 'Run', 'label': '5 km', 'done': false},
+    ]);
+  });
+
+  test('widget sub-task taps are queued as quest_item check-offs', () {
+    final raw = '["quest_item|q1:i2|2026-09-23","quest|q2|2026-09-23","quest_item|q1:i1|2026-09-22"]';
+    final out = HomeWidgetService.parseCheckOffs(raw, wed);
+    expect(out.map((e) => '${e.kind} ${e.id}'), ['quest_item q1:i2', 'quest q2']);
   });
 
   test('widget deep links route to the right screen', () {

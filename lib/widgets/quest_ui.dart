@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'system_ui.dart';
 
 import '../models/quest.dart';
 import '../screens/quests/quest_detail_screen.dart';
@@ -155,128 +156,104 @@ class QuestCard extends StatelessWidget {
     final done = quest.isCompletedToday;
     final questService = context.read<QuestService>();
     final progress = quest.todayProgress;
+    final accent = done ? SysColors.ok : SysColors.cyan;
 
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: quest.id)),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(
-              color: done ? AppColors.success.withValues(alpha: 0.45) : AppColors.surfaceBorder,
-              width: 1.5,
-            ),
-          ),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ProgressRing(
-                    progress: progress,
-                    size: 52,
-                    stroke: 4,
-                    child: Text(quest.emoji, style: const TextStyle(fontSize: 22)),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Expanded(
-                            child: Text(quest.title,
-                                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                          if (done)
-                            const Icon(Icons.check_circle, color: AppColors.success, size: 20)
-                          else
-                            Text('+${quest.xp} XP',
-                                style: AppTextStyles.caption.copyWith(
-                                    color: AppColors.purpleLight, fontWeight: FontWeight.w800)),
-                        ]),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            MetaChip(
-                                label: quest.difficulty,
-                                color: difficultyColor(quest.difficulty)),
-                            if (quest.streak > 0)
-                              MetaChip(
-                                  label: '${quest.streak}',
-                                  icon: Icons.local_fire_department,
-                                  color: AppColors.flameOrange),
-                            if (quest.timeRange != null)
-                              MetaChip(
-                                  label: quest.timeRange!,
-                                  icon: Icons.schedule,
-                                  color: AppColors.textSecondary),
-                            if (!quest.isAllDays)
-                              MetaChip(label: quest.daysLabel, color: AppColors.purpleLight),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    return SysPanel(
+      accent: accent,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: quest.id)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: accent.withValues(alpha: 0.7)),
+                color: accent.withValues(alpha: 0.08),
               ),
-              if (quest.items.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                ...quest.items.map((item) {
-                  final itemDone = done || item.isDone;
-                  return InkWell(
-                    onTap: () => questService.toggleQuestItem(quest.id, item.id),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
-                      child: Row(children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            color: itemDone ? AppColors.success : Colors.transparent,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                                color: itemDone ? AppColors.success : AppColors.textMuted,
-                                width: 1.5),
-                          ),
-                          child: itemDone
-                              ? const Icon(Icons.check, size: 15, color: Colors.white)
-                              : null,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(item.name,
-                              style: AppTextStyles.body.copyWith(
-                                fontSize: 14,
-                                decoration: itemDone ? TextDecoration.lineThrough : null,
-                                color: itemDone ? AppColors.textMuted : AppColors.textPrimary,
-                              )),
-                        ),
-                        Text(item.targetLabel,
-                            style: AppTextStyles.caption.copyWith(fontSize: 12)),
-                      ]),
-                    ),
-                  );
-                }),
+              child: Text(quest.emoji, style: const TextStyle(fontSize: 22)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(quest.title.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SysText.header.copyWith(fontSize: 14, letterSpacing: 1.6)),
+                const SizedBox(height: 4),
+                Text(
+                    [
+                      'RANK ${_rankFor(quest.difficulty)}',
+                      if (quest.timeRange != null) quest.timeRange!,
+                      if (!quest.isAllDays) quest.daysLabel,
+                    ].join('  ·  '),
+                    style: SysText.label.copyWith(fontSize: 10, color: SysColors.muted)),
+              ]),
+            ),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              if (done)
+                Text('CLEAR', style: SysText.label.copyWith(color: SysColors.ok))
+              else
+                Text('+${quest.xp} XP', style: SysText.label.copyWith(color: SysColors.gold)),
+              if (quest.streak > 0) ...[
+                const SizedBox(height: 4),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.local_fire_department, size: 13, color: AppColors.flameOrange),
+                  Text('${quest.streak}', style: SysText.mono.copyWith(fontSize: 12)),
+                ]),
               ],
-            ],
-          ),
-        ),
+            ]),
+          ]),
+          const SizedBox(height: 10),
+          SysBar(value: progress, color: accent, height: 4),
+          if (quest.items.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...quest.items.map((item) {
+              final itemDone = done || item.isDone;
+              return InkWell(
+                onTap: () => questService.toggleQuestItem(quest.id, item.id),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(item.name,
+                          style: SysText.body.copyWith(
+                            fontSize: 14,
+                            decoration: itemDone ? TextDecoration.lineThrough : null,
+                            color: itemDone ? SysColors.muted : SysColors.text,
+                          )),
+                    ),
+                    Text('[${itemDone ? item.targetLabel : '0 / ${item.targetLabel}'}]',
+                        style: SysText.mono.copyWith(
+                            fontSize: 12, color: itemDone ? SysColors.ok : SysColors.cyanSoft)),
+                    const SizedBox(width: 10),
+                    SysCheck(checked: itemDone, size: 18),
+                  ]),
+                ),
+              );
+            }),
+          ],
+        ],
       ),
     );
+  }
+
+  static String _rankFor(String difficulty) {
+    switch (difficulty) {
+      case 'Easy':
+        return 'E';
+      case 'Hard':
+        return 'B';
+      case 'Epic':
+        return 'A';
+      default:
+        return 'D';
+    }
   }
 }

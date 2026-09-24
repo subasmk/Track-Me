@@ -7,8 +7,14 @@ class PublicProfile {
   final int longestStreak;
   final List<String> badges;
   final List<PublicTask> mainTasks;
+  final String fullName;
+  final String bio;
+  final String? avatarUrl;
 
   PublicProfile({
+    this.fullName = '',
+    this.bio = '',
+    this.avatarUrl,
     required this.id,
     required this.username,
     this.level = 1,
@@ -34,6 +40,9 @@ class PublicProfile {
   factory PublicProfile.fromJson(Map<String, dynamic> json) {
     return PublicProfile(
       id: json['id'] ?? '',
+      fullName: json['full_name'] ?? '',
+      bio: json['bio'] ?? '',
+      avatarUrl: json['avatar_url'] as String?,
       username: json['username'] ?? 'Anonymous',
       level: json['level'] ?? 1,
       xp: json['xp'] ?? 0,
@@ -46,6 +55,16 @@ class PublicProfile {
           [],
     );
   }
+}
+
+/// One row of the friendships table, seen from the signed-in user's side.
+class Friendship {
+  final int id;
+  final PublicProfile other;
+  final bool accepted;
+  /// True when the other person sent the request to me.
+  final bool incoming;
+  const Friendship({required this.id, required this.other, required this.accepted, required this.incoming});
 }
 
 class PublicTask {

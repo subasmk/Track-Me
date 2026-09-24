@@ -5,7 +5,7 @@ import '../../models/achievement.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/sloth_mascot.dart';
+import '../../widgets/sloth_sticker.dart';
 
 /// Full-screen celebration shown right after a successful "Complete Today".
 /// Mirrors the reference design: sloth + confetti burst, "Great work!",
@@ -83,7 +83,7 @@ class _CelebrationScreenState extends State<CelebrationScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SlothMascot(size: 130, mood: SlothMood.celebrating)
+                    const SlothStickerView(sticker: SlothSticker.levelUp, size: 150)
                         .animate()
                         .scale(
                           begin: const Offset(0.6, 0.6),

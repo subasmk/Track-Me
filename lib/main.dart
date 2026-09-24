@@ -6,12 +6,15 @@ import 'package:provider/provider.dart';
 import 'package:home_widget/home_widget.dart';
 
 import 'services/hive_service.dart';
+import 'services/home_widget_service.dart';
 import 'services/goal_service.dart';
 import 'services/quest_service.dart';
 import 'services/settings_service.dart';
 import 'services/progression_service.dart';
 import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
+import 'screens/auth/claim_data_screen.dart';
+import 'screens/auth/setup_profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/goal_detail/goal_detail_screen.dart';
@@ -67,6 +70,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     ReminderService.rescheduleAll(_questService.quests);
     _settingsService = SettingsService();
     _supabaseService = SupabaseService();
+    _supabaseService.onLocalDataReplaced = _reloadAccountData;
 
     // Initialize Supabase in background
     _supabaseService.initSupabase();
@@ -79,6 +83,10 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     _goalService.addListener(_onDataChanged);
     _questService.addListener(_onDataChanged);
 
+    _applyWidgetCheckOffs();
+    HomeWidgetService.saveWidgetStyle(
+        style: _settingsService.widgetStyle, bgPath: _settingsService.widgetBgPath);
+
     // Tapping a goal's home-screen widget should open that goal directly.
     _handleInitialWidgetLaunch();
     _widgetClickSub = HomeWidget.widgetClicked.listen(_handleWidgetUri);
@@ -90,18 +98,59 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     // reset yesterday's sub-task ticks and refresh the home-screen widget.
     if (state == AppLifecycleState.resumed) {
       _questService.refreshForNewDay();
+      _applyWidgetCheckOffs();
     }
+  }
+
+  /// Applies check-offs made from the widget's check button.
+  Future<void> _applyWidgetCheckOffs() async {
+    final items = await HomeWidgetService.takePendingCheckOffs();
+    for (final item in items) {
+      if (item.kind == 'quest_item') {
+        final sep = item.id.indexOf(':');
+        if (sep > 0) {
+          await _questService.toggleQuestItem(item.id.substring(0, sep), item.id.substring(sep + 1));
+        }
+      } else if (item.kind == 'quest') {
+        await _questService.completeToday(item.id);
+      } else {
+        final goal = _goalService.goalById(item.id);
+        if (goal != null && !goal.isCompletedToday) {
+          await _goalService.completeToday(goal, 'Checked off from the home screen widget');
+        }
+      }
+    }
+    if (items.isNotEmpty) await _questService.syncWidget();
+  }
+
+  /// The live data now belongs to another account: reload every service
+  /// and push the new data to the home-screen widgets.
+  void _reloadAccountData() {
+    _settingsService.reloadFromDisk();
+    _progression.reload();
+    _goalService.setUserName(_settingsService.userName);
+    _goalService.notifyExternalChange();
+    _questService.reloadFromDisk();
+    ReminderService.rescheduleAll(_questService.quests);
+    HomeWidgetService.saveWidgetStyle(
+        style: _settingsService.widgetStyle, bgPath: _settingsService.widgetBgPath);
   }
 
   void _onSettingsChanged() {
     _goalService.setUserName(_settingsService.userName);
     _supabaseService.updateUsername(_settingsService.userName);
+    _onDataChanged(); // privacy toggles change what the cloud profile shows
   }
 
   void _onDataChanged() {
     _supabaseService.syncLocalProfileToCloud(
       goals: _goalService.goals,
       quests: _questService.quests,
+      shareQuests: _settingsService.shareQuests,
+      discoverable: _settingsService.discoverable,
+      fullName: _settingsService.fullName,
+      bio: _settingsService.bio,
+      photoPath: _settingsService.photoPath,
     );
   }
 
@@ -170,7 +219,14 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
           builder: (context) {
             final supabase = context.watch<SupabaseService>();
             if (supabase.isLoggedIn) {
-              return const HomeScreen();
+              if (supabase.needsOwnerChoice) return const ClaimDataScreen();
+              if (!supabase.dataReady) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              // New accounts pick a unique username, name, bio and photo first.
+              return supabase.profileComplete
+                  ? const HomeScreen()
+                  : const SetupProfileScreen();
             }
             return const AuthScreen();
           },

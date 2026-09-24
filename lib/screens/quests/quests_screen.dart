@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../services/progression_service.dart';
 import '../../services/quest_service.dart';
 import '../../services/quest_share.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../models/quest.dart';
@@ -12,6 +11,7 @@ import '../../utils/app_clock.dart';
 import '../../widgets/pin_quest_widget.dart';
 import '../../widgets/quest_ui.dart';
 import '../../widgets/sloth_sticker.dart';
+import '../../widgets/system_ui.dart';
 import 'quest_detail_screen.dart';
 import 'add_quest_screen.dart';
 import 'quest_analytics_screen.dart';
@@ -37,10 +37,13 @@ class _QuestsScreenState extends State<QuestsScreen> {
     final totalCount = questService.totalQuestsCount;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: SysColors.bg,
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
-        leading: const BackButton(),
-        title: const Text('Quests'),
+        backgroundColor: SysColors.bg,
+        leading: const BackButton(color: SysColors.cyanSoft),
+        iconTheme: const IconThemeData(color: SysColors.cyanSoft),
+        title: const Text('QUEST LOG', style: SysText.header),
         actions: [
           IconButton(
             tooltip: 'Stats',
@@ -65,12 +68,15 @@ class _QuestsScreenState extends State<QuestsScreen> {
           context,
           MaterialPageRoute(builder: (_) => const AddQuestScreen()),
         ),
-        backgroundColor: AppColors.purpleMid,
-        icon: const Icon(Icons.add, color: AppColors.textPrimary),
-        label: const Text('New quest',
-            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        backgroundColor: SysColors.bg,
+        shape: const BeveledRectangleBorder(
+            side: BorderSide(color: SysColors.cyan, width: 1.4),
+            borderRadius: BorderRadius.all(Radius.circular(8))),
+        icon: const Icon(Icons.add, color: SysColors.cyan),
+        label: const Text('NEW QUEST', style: SysText.label),
       ),
-      body: SafeArea(
+      body: SysBackground(
+        child: SafeArea(
         child: totalCount == 0
             ? const _EmptyState()
             : ListView(
@@ -84,7 +90,9 @@ class _QuestsScreenState extends State<QuestsScreen> {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   if (activeQuests.isNotEmpty) ...[
-                    const SectionLabel('Up next'),
+                    const Padding(
+                        padding: EdgeInsets.only(top: 8, bottom: 10),
+                        child: Text('ACTIVE QUESTS', style: SysText.label)),
                     ...activeQuests.map((quest) => Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                           child: QuestCard(quest: quest),
@@ -94,7 +102,7 @@ class _QuestsScreenState extends State<QuestsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                       child: Center(
                         child: Text('No quests scheduled today. Enjoy the rest day.',
-                            style: AppTextStyles.bodyMuted),
+                            style: SysText.body.copyWith(color: SysColors.muted)),
                       ),
                     ),
                   if (completedQuests.isNotEmpty)
@@ -113,6 +121,7 @@ class _QuestsScreenState extends State<QuestsScreen> {
                     ),
                 ],
               ),
+        ),
       ),
     );
   }
@@ -127,6 +136,7 @@ class _TodayHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progression = context.watch<ProgressionService>();
+    final quests = context.watch<QuestService>().quests;
     final progress = total == 0 ? 0.0 : done / total;
     final allDone = total > 0 && done == total;
     final sticker = stickerFor(
@@ -135,97 +145,116 @@ class _TodayHero extends StatelessWidget {
       hour: AppClock.now().hour,
       type: next?.type,
     );
-    final headline = allDone
-        ? 'All done today!'
-        : total == 0
-            ? 'Rest day'
-            : done == 0
-                ? "Let's get moving"
-                : 'Keep going';
-    final sub = allDone
-        ? 'Every quest is complete. Streaks are safe.'
-        : next != null
-            ? 'Next: ${next!.emoji} ${next!.title}${next!.startTime != null ? ' at ${next!.startTime}' : ''}'
-            : 'Nothing left for today.';
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1B7FD4), Color(0xFF063370)],
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.purple.withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ProgressRing(
-                progress: progress,
-                size: 84,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text('$done/$total',
-                      style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
-                  Text('today', style: AppTextStyles.caption.copyWith(color: Colors.white70)),
-                ]),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(headline,
-                        style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 4),
-                    Text(sub,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.caption.copyWith(color: Colors.white70, fontSize: 13)),
-                  ],
-                ),
-              ),
-              SlothStickerView(sticker: sticker, size: 88, glow: false),
-            ],
-          ),
-          ...[
-            const SizedBox(height: AppSpacing.md),
-            Row(children: [
-              LevelBadge(level: progression.level),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: progression.levelProgress,
-                      minHeight: 8,
-                      backgroundColor: Colors.white.withValues(alpha: 0.15),
-                      valueColor: const AlwaysStoppedAnimation(AppColors.flameYellow),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text('${progression.xpIntoLevel} / ${progression.xpForNextLevel} XP to level ${progression.level + 1}',
-                      style: AppTextStyles.caption.copyWith(color: Colors.white70, fontSize: 11)),
-                ]),
-              ),
-              const SizedBox(width: 10),
-              Text('🪙 ${progression.gold}',
-                  style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
+    // Stats grow with every completed quest of that type.
+    int stat(List<String> types) => 10 +
+        quests
+            .where((q) => types.contains(q.type))
+            .fold<int>(0, (n, q) => n + q.completionHistory.length);
+    final today = quests.where((q) => q.isScheduledForToday).toList();
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SysPanel(
+        tag: 'Status',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('LEVEL', style: SysText.label),
+              Text('${progression.level}',
+                  style: const TextStyle(
+                      color: SysColors.text,
+                      fontSize: 48,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      shadows: [Shadow(color: SysColors.cyan, blurRadius: 16)])),
             ]),
-          ],
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('RANK  ${SysRank.rank(progression.level)}', style: SysText.label),
+                const SizedBox(height: 4),
+                Text('TITLE  ${SysRank.title(progression.level)}',
+                    style: SysText.label.copyWith(color: SysColors.gold)),
+                const SizedBox(height: 8),
+                SysBar(value: progression.levelProgress),
+                const SizedBox(height: 4),
+                Text('XP ${progression.xpIntoLevel} / ${progression.xpForNextLevel}',
+                    style: SysText.mono.copyWith(fontSize: 11, color: SysColors.muted)),
+              ]),
+            ),
+            SlothStickerView(sticker: sticker, size: 72, glow: false),
+          ]),
+          const SizedBox(height: 14),
+          Container(height: 1, color: SysColors.cyan.withValues(alpha: 0.3)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: SysStat(label: 'STR', value: stat(['Fitness']), icon: Icons.fitness_center)),
+            const SizedBox(width: 24),
+            Expanded(child: SysStat(label: 'INT', value: stat(['Study']), icon: Icons.psychology_alt)),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: SysStat(label: 'AGI', value: stat(['Skill']), icon: Icons.bolt)),
+            const SizedBox(width: 24),
+            Expanded(child: SysStat(label: 'SEN', value: stat(['Mindfulness', 'Custom']), icon: Icons.visibility)),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Icon(Icons.toll, size: 16, color: SysColors.gold),
+            const SizedBox(width: 6),
+            Text('GOLD', style: SysText.label.copyWith(color: SysColors.gold)),
+            const Spacer(),
+            Text('${progression.gold}', style: SysText.mono.copyWith(fontSize: 16, color: SysColors.gold)),
+          ]),
+        ]),
       ),
-    );
+      const SizedBox(height: 18),
+      SysPanel(
+        tag: 'Daily Quest',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(
+              allDone
+                  ? 'All daily quests cleared.'
+                  : total == 0
+                      ? 'No quests today. Rest and recover.'
+                      : 'Complete today\'s quests to grow stronger.',
+              textAlign: TextAlign.center,
+              style: SysText.body.copyWith(color: SysColors.cyanSoft)),
+          if (today.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Center(child: Text('GOALS', style: SysText.label)),
+            const SizedBox(height: 10),
+            for (final q in today)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(children: [
+                  Expanded(
+                      child: Text(q.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: SysText.body)),
+                  Text(
+                      q.items.isEmpty
+                          ? (q.isCompletedToday ? '[1/1]' : '[0/1]')
+                          : '[${q.isCompletedToday ? q.items.length : q.doneItemCount}/${q.items.length}]',
+                      style: SysText.mono.copyWith(
+                          color: q.isCompletedToday ? SysColors.ok : SysColors.text)),
+                  const SizedBox(width: 10),
+                  SysCheck(checked: q.isCompletedToday),
+                ]),
+              ),
+            const SizedBox(height: 12),
+            SysBar(value: progress, height: 5),
+            const SizedBox(height: 14),
+            Text(
+                allDone
+                    ? 'REWARD: streaks protected, XP and gold granted.'
+                    : 'WARNING: Leave a daily quest unfinished and its streak resets to 0.',
+                textAlign: TextAlign.center,
+                style: SysText.label.copyWith(
+                    color: allDone ? SysColors.ok : SysColors.warn, letterSpacing: 0.8, fontSize: 12)),
+          ],
+        ]),
+      ),
+    ]);
   }
 }
 
@@ -249,11 +278,9 @@ class _Collapsible extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
             child: Row(children: [
               Icon(open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                  color: AppColors.textMuted, size: 20),
+                  color: SysColors.cyanSoft, size: 20),
               const SizedBox(width: 4),
-              Text(label,
-                  style: AppTextStyles.caption.copyWith(
-                      color: AppColors.textSecondary, fontWeight: FontWeight.bold)),
+              Text(label.toUpperCase(), style: SysText.label),
             ]),
           ),
         ),

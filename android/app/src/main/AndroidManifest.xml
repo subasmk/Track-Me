@@ -37,6 +37,18 @@
             <intent-filter>
                 <action android:name="es.antonborri.home_widget.action.LAUNCH" />
             </intent-filter>
+
+            <!--
+              Supabase auth callback. The sign-up confirmation email links to
+              com.trackme.tracker://login-callback (SupabaseService.authRedirectUrl),
+              which reopens the app and signs the user in.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.trackme.tracker" android:host="login-callback" />
+            </intent-filter>
         </activity>
 
         <!--
@@ -45,6 +57,11 @@
           below, so a user can add several of these side by side — one per
           goal — exactly like separate Duolingo streak widgets.
         -->
+        <!-- Widget check button (tap-to-check-off without opening the app). -->
+        <receiver
+            android:name=".WidgetCheckOffReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".TrackMeGoalWidgetProvider"
             android:exported="true">

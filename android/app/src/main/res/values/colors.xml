@@ -54,4 +54,29 @@
     <color name="sloth_eye_patch">#6B4A32</color>
     <color name="sloth_cheek">#FF8A65</color>
     <color name="sloth_eye">#3A2618</color>
+    <!-- More widget gradient themes -->
+    <color name="theme_sunset_light">#FFFFB88C</color>
+    <color name="theme_sunset_mid">#FFFF6A88</color>
+    <color name="theme_sunset_dark">#FFB33771</color>
+    <color name="theme_ocean_light">#FF1BFFFF</color>
+    <color name="theme_ocean_mid">#FF2E86DE</color>
+    <color name="theme_ocean_dark">#FF2E3192</color>
+    <color name="theme_aurora_light">#FF00F5A0</color>
+    <color name="theme_aurora_mid">#FF00C9A7</color>
+    <color name="theme_aurora_dark">#FF845EC2</color>
+    <color name="theme_grape_light">#FFC471F5</color>
+    <color name="theme_grape_mid">#FF8E2DE2</color>
+    <color name="theme_grape_dark">#FF4A00E0</color>
+    <color name="theme_rose_light">#FFFF9A9E</color>
+    <color name="theme_rose_mid">#FFF857A6</color>
+    <color name="theme_rose_dark">#FFC2185B</color>
+    <color name="theme_lime_light">#FFD4FC79</color>
+    <color name="theme_lime_mid">#FF89E219</color>
+    <color name="theme_lime_dark">#FF3C9A00</color>
+    <color name="theme_midnight_light">#FF4B6CB7</color>
+    <color name="theme_midnight_mid">#FF243B55</color>
+    <color name="theme_midnight_dark">#FF141E30</color>
+    <color name="theme_peach_light">#FFFFE29F</color>
+    <color name="theme_peach_mid">#FFFFA99F</color>
+    <color name="theme_peach_dark">#FFFF719A</color>
 </resources>

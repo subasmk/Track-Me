@@ -25,7 +25,9 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
-    android:initialLayout="@layout/widget_goal"
+    android:initialLayout="@layout/widget_duo"
+    android:previewLayout="@layout/widget_duo"
     android:configure="com.trackme.app.WidgetConfigureActivity"
+    android:widgetFeatures="reconfigurable|configuration_optional"
     android:description="@string/goal_widget_label">
 </appwidget-provider>

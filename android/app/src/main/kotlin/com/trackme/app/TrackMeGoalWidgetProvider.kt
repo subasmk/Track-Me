@@ -69,66 +69,61 @@ class TrackMeGoalWidgetProvider : HomeWidgetProvider() {
          * strip) is shown instead of the compact "Small" view. */
         private const val MEDIUM_WIDTH_THRESHOLD_DP = 110
 
+        private const val KEY_PENDING_PIN_ID = "goal_pending_pin_id"
+        private const val KEY_PENDING_PIN_AT = "goal_pending_pin_at"
+        private const val PENDING_PIN_TTL_MS = 5 * 60 * 1000L
+
         fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int,
             widgetData: SharedPreferences
         ) {
-            val views = RemoteViews(context.packageName, R.layout.widget_goal)
-            val goalId = WidgetConfig.getGoalId(context, appWidgetId)
+            var goalId = WidgetConfig.getGoalId(context, appWidgetId)
+            if (goalId == null) {
+                // Pinned from inside the app (no configure screen): bind the
+                // goal the user tapped "Add to home screen" on, else the first goal.
+                val pendingId = widgetData.getString(KEY_PENDING_PIN_ID, null)
+                val pendingAt = widgetData.getString(KEY_PENDING_PIN_AT, null)?.toLongOrNull() ?: 0L
+                val fresh = System.currentTimeMillis() - pendingAt in 0..PENDING_PIN_TTL_MS
+                goalId = if (!pendingId.isNullOrEmpty() && fresh) pendingId else firstGoalId(widgetData)
+                if (goalId != null) {
+                    WidgetConfig.setGoalId(context, appWidgetId, goalId)
+                    widgetData.edit().remove(KEY_PENDING_PIN_ID).remove(KEY_PENDING_PIN_AT).apply()
+                }
+            }
             val goal = goalId?.let { findGoal(widgetData, it) }
 
             if (goalId == null || goal == null) {
-                showEmptyState(context, views)
+                val views = DuoWidget.render(
+                    context, appWidgetManager, appWidgetId, widgetData,
+                    DuoWidget.Model("goal", "", "Add a goal in TrackMe", 0, false, null, BooleanArray(5), "trackme://open")
+                )
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 return
             }
 
-            views.setViewVisibility(R.id.content_container, android.view.View.VISIBLE)
-            views.setViewVisibility(R.id.empty_state, android.view.View.GONE)
-
-            views.setInt(
-                R.id.widget_root,
-                "setBackgroundResource",
-                themeDrawableFor(goal.optString("theme", "purple"))
+            val id = goal.optString("id", goalId)
+            val model = DuoWidget.Model(
+                kind = "goal",
+                id = if (id == "default") "" else id,
+                title = "${goal.optString("emoji", "")} ${goal.optString("title", "Goal")}".trim(),
+                streak = goal.optInt("streak", 0),
+                done = goal.optBoolean("completedToday", false),
+                themeId = goal.optString("theme", "purple"),
+                last5 = DuoWidget.last5From(goal.optJSONArray("last5")),
+                openUri = "trackme://goal?id=$id",
             )
-
-            val streak = goal.optInt("streak", 0)
-            val unit = if (streak == 1) "day" else "days"
-            val completedToday = goal.optBoolean("completedToday", false)
-            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-            val mood = mascotStateFor(completedToday, streak, hour)
-
-            views.setTextViewText(R.id.streak_number, "$streak $unit")
-            views.setTextViewText(R.id.goal_title, goal.optString("title", "Goal"))
-            views.setTextViewText(R.id.subtitle_text, subtitleFor(context, mood, streak, hour))
-            views.setImageViewResource(R.id.sloth_image, mascotDrawableFor(mood))
-
-            // Reveal the title + week strip only once the widget has been
-            // resized wide enough to comfortably fit them.
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val minWidthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
-            val isMedium = minWidthDp >= MEDIUM_WIDTH_THRESHOLD_DP
-            views.setViewVisibility(
-                R.id.goal_title,
-                if (isMedium) android.view.View.VISIBLE else android.view.View.GONE
+            appWidgetManager.updateAppWidget(
+                appWidgetId, DuoWidget.render(context, appWidgetManager, appWidgetId, widgetData, model)
             )
-            views.setViewVisibility(
-                R.id.week_row,
-                if (isMedium) android.view.View.VISIBLE else android.view.View.GONE
-            )
+        }
 
-            if (isMedium) {
-                applyWeekRow(views, goal.optJSONArray("week"))
-            }
-
-            val uri = Uri.parse("trackme://goal?id=$goalId")
-            val pendingIntent =
-                HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java, uri)
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+        private fun firstGoalId(widgetData: SharedPreferences): String? = try {
+            val arr = JSONArray(widgetData.getString(KEY_GOALS_JSON, "[]"))
+            if (arr.length() > 0) arr.getJSONObject(0).optString("id") else null
+        } catch (e: Exception) {
+            null
         }
 
         private fun showEmptyState(context: Context, views: RemoteViews) {
@@ -296,6 +291,14 @@ object GoalThemeColors {
         "berry" -> R.drawable.bg_widget_theme_berry
         "coral" -> R.drawable.bg_widget_theme_coral
         "gold" -> R.drawable.bg_widget_theme_gold
+        "sunset" -> R.drawable.bg_widget_theme_sunset
+        "ocean" -> R.drawable.bg_widget_theme_ocean
+        "aurora" -> R.drawable.bg_widget_theme_aurora
+        "grape" -> R.drawable.bg_widget_theme_grape
+        "rose" -> R.drawable.bg_widget_theme_rose
+        "lime" -> R.drawable.bg_widget_theme_lime
+        "midnight" -> R.drawable.bg_widget_theme_midnight
+        "peach" -> R.drawable.bg_widget_theme_peach
         // Reuses the pre-existing drawable (also the layouts' own static
         // XML background) rather than a separate near-duplicate file.
         else -> R.drawable.bg_widget_purple_gradient
@@ -308,6 +311,14 @@ object GoalThemeColors {
         "berry" -> R.color.theme_berry_mid
         "coral" -> R.color.theme_coral_mid
         "gold" -> R.color.theme_gold_mid
+        "sunset" -> R.color.theme_sunset_mid
+        "ocean" -> R.color.theme_ocean_mid
+        "aurora" -> R.color.theme_aurora_mid
+        "grape" -> R.color.theme_grape_mid
+        "rose" -> R.color.theme_rose_mid
+        "lime" -> R.color.theme_lime_mid
+        "midnight" -> R.color.theme_midnight_mid
+        "peach" -> R.color.theme_peach_mid
         else -> R.color.purple
     }
 }

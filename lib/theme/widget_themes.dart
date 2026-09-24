@@ -95,6 +95,70 @@ class WidgetThemes {
     dark: Color(0xFFB45309),
   );
 
+  static const sunset = WidgetTheme(
+    id: 'sunset',
+    label: 'Sunset',
+    light: Color(0xFFFFB88C),
+    mid: Color(0xFFFF6A88),
+    dark: Color(0xFFB33771),
+  );
+
+  static const ocean = WidgetTheme(
+    id: 'ocean',
+    label: 'Ocean',
+    light: Color(0xFF1BFFFF),
+    mid: Color(0xFF2E86DE),
+    dark: Color(0xFF2E3192),
+  );
+
+  static const aurora = WidgetTheme(
+    id: 'aurora',
+    label: 'Aurora',
+    light: Color(0xFF00F5A0),
+    mid: Color(0xFF00C9A7),
+    dark: Color(0xFF845EC2),
+  );
+
+  static const grape = WidgetTheme(
+    id: 'grape',
+    label: 'Grape',
+    light: Color(0xFFC471F5),
+    mid: Color(0xFF8E2DE2),
+    dark: Color(0xFF4A00E0),
+  );
+
+  static const rose = WidgetTheme(
+    id: 'rose',
+    label: 'Rose',
+    light: Color(0xFFFF9A9E),
+    mid: Color(0xFFF857A6),
+    dark: Color(0xFFC2185B),
+  );
+
+  static const lime = WidgetTheme(
+    id: 'lime',
+    label: 'Lime',
+    light: Color(0xFFD4FC79),
+    mid: Color(0xFF89E219),
+    dark: Color(0xFF3C9A00),
+  );
+
+  static const midnight = WidgetTheme(
+    id: 'midnight',
+    label: 'Midnight',
+    light: Color(0xFF4B6CB7),
+    mid: Color(0xFF243B55),
+    dark: Color(0xFF141E30),
+  );
+
+  static const peach = WidgetTheme(
+    id: 'peach',
+    label: 'Peach',
+    light: Color(0xFFFFE29F),
+    mid: Color(0xFFFFA99F),
+    dark: Color(0xFFFF719A),
+  );
+
   static const List<WidgetTheme> all = [
     purple,
     mint,
@@ -103,6 +167,14 @@ class WidgetThemes {
     berry,
     coral,
     gold,
+    sunset,
+    ocean,
+    aurora,
+    grape,
+    rose,
+    lime,
+    midnight,
+    peach,
   ];
 
   static WidgetTheme byId(String? id) =>

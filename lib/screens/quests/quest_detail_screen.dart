@@ -11,8 +11,8 @@ import '../../services/quest_share.dart';
 import '../../services/reminder_service.dart';
 import '../../utils/app_clock.dart';
 import '../../widgets/pin_quest_widget.dart';
-import '../../widgets/quest_ui.dart';
 import '../../widgets/sloth_sticker.dart';
+import '../../widgets/system_ui.dart';
 import 'add_quest_screen.dart';
 import 'focus_timer_screen.dart';
 
@@ -76,8 +76,10 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: SysColors.bg,
       appBar: AppBar(
+        backgroundColor: SysColors.bg,
+        iconTheme: const IconThemeData(color: SysColors.cyanSoft),
         leading: const BackButton(),
         title: const Text('Quest'),
         actions: [
@@ -117,40 +119,42 @@ class _QuestDetailScreenState extends State<QuestDetailScreen> {
       ),
       body: Stack(
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, 120),
+          SysBackground(
+            child: ListView(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 8, AppSpacing.md, 120),
             children: [
               _Hero(quest: quest, sticker: sticker),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: 16),
               _StatsRow(quest: quest),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: 16),
               if (quest.items.isNotEmpty) ...[
-                SectionLabel('Tasks · ${quest.doneItemCount}/${quest.items.length}'),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: AppColors.surfaceBorder),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final item in quest.items)
-                        _TaskRow(
-                          name: item.name,
-                          target: item.progressLabel,
-                          unit: item.unit,
-                          done: done || item.isDone,
-                          isNext: quest.nextItem?.id == item.id,
-                          onTap: () => questService.toggleQuestItem(quest.id, item.id),
-                        ),
-                    ],
-                  ),
+                SysPanel(
+                  tag: 'Goals',
+                  child: Column(children: [
+                    for (final item in quest.items)
+                      _TaskRow(
+                        name: item.name,
+                        target: item.progressLabel,
+                        unit: item.unit,
+                        done: done || item.isDone,
+                        isNext: quest.nextItem?.id == item.id,
+                        onTap: () => questService.toggleQuestItem(quest.id, item.id),
+                      ),
+                    const SizedBox(height: 12),
+                    Text(
+                        done
+                            ? 'QUEST CLEARED. The streak is safe today.'
+                            : 'WARNING: Leave this quest unfinished today and the streak resets to 0.',
+                        textAlign: TextAlign.center,
+                        style: SysText.label.copyWith(
+                            color: done ? SysColors.ok : SysColors.warn, letterSpacing: 0.8, fontSize: 12)),
+                  ]),
                 ),
-                const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: 16),
               ],
-              const SectionLabel('Reward'),
               _RewardStrip(quest: quest),
             ],
+          ),
           ),
           Align(
             alignment: Alignment.topCenter,
@@ -273,72 +277,34 @@ class _Hero extends StatelessWidget {
             : quest.isScheduledForToday
                 ? 'Ready when you are.'
                 : 'Not scheduled today (${quest.daysLabel}).';
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: done
-              ? const [Color(0xFF15803D), Color(0xFF064E3B)]
-              : const [Color(0xFF1B7FD4), Color(0xFF063370)],
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ProgressRing(
-                progress: quest.todayProgress,
-                size: 76,
-                child: Text(quest.emoji, style: const TextStyle(fontSize: 32)),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(quest.title,
-                        style: AppTextStyles.headline.copyWith(fontSize: 22),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 8),
-                    Wrap(spacing: 6, runSpacing: 6, children: [
-                      MetaChip(label: quest.type, color: Colors.white),
-                      MetaChip(label: quest.difficulty, color: difficultyColor(quest.difficulty)),
-                      if (quest.timeRange != null)
-                        MetaChip(label: quest.timeRange!, icon: Icons.schedule, color: Colors.white),
-                      MetaChip(label: quest.daysLabel, color: Colors.white70),
-                    ]),
-                  ],
-                ),
-              ),
-            ],
+    final accent = done ? SysColors.ok : SysColors.cyan;
+    return SysPanel(
+      tag: done ? 'Quest Cleared' : 'Quest Info',
+      accent: accent,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${quest.emoji}  ${quest.title.toUpperCase()}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: SysText.header.copyWith(fontSize: 18, letterSpacing: 1.5)),
+              const SizedBox(height: 10),
+              Text('TYPE      ${quest.type.toUpperCase()}', style: SysText.label),
+              const SizedBox(height: 4),
+              Text('DIFFICULTY  ${quest.difficulty.toUpperCase()}', style: SysText.label),
+              const SizedBox(height: 4),
+              Text('SCHEDULE  ${quest.timeRange ?? 'ANY TIME'} · ${quest.daysLabel.toUpperCase()}',
+                  style: SysText.label),
+            ]),
           ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(message,
-                      style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SlothStickerView(sticker: sticker, size: 92, glow: false),
-            ],
-          ),
-        ],
-      ),
+          SlothStickerView(sticker: sticker, size: 84, glow: false),
+        ]),
+        const SizedBox(height: 12),
+        SysBar(value: quest.todayProgress, color: accent),
+        const SizedBox(height: 10),
+        Text(message, style: SysText.body.copyWith(color: SysColors.cyanSoft)),
+      ]),
     );
   }
 }
@@ -353,15 +319,14 @@ class _StatsRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: AppColors.surfaceBorder),
+              color: SysColors.panelBottom,
+              border: Border.all(color: SysColors.cyan.withValues(alpha: 0.45)),
             ),
             child: Column(children: [
               Icon(icon, color: color, size: 20),
               const SizedBox(height: 4),
-              Text(value, style: AppTextStyles.title.copyWith(fontWeight: FontWeight.w900)),
-              Text(label, style: AppTextStyles.caption.copyWith(fontSize: 11)),
+              Text(value, style: SysText.mono.copyWith(fontSize: 18)),
+              Text(label.toUpperCase(), style: SysText.label.copyWith(fontSize: 9, letterSpacing: 1.2)),
             ]),
           ),
         );
@@ -398,39 +363,24 @@ class _TaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: isNext ? AppColors.purpleMid.withValues(alpha: 0.10) : null,
-          border: const Border(bottom: BorderSide(color: AppColors.surfaceBorder)),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: done ? AppColors.success : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: done ? AppColors.success : (isNext ? AppColors.purpleLight : AppColors.textMuted),
-                  width: 2),
-            ),
-            child: done ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
-          ),
-          const SizedBox(width: 12),
+          if (isNext && !done)
+            const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: Icon(Icons.play_arrow, size: 14, color: SysColors.cyan)),
           Expanded(
             child: Text(name,
-                style: AppTextStyles.body.copyWith(
-                  fontWeight: FontWeight.w600,
+                style: SysText.body.copyWith(
                   decoration: done ? TextDecoration.lineThrough : null,
-                  color: done ? AppColors.textMuted : AppColors.textPrimary,
+                  color: done ? SysColors.muted : SysColors.text,
                 )),
           ),
-          Text('$target $unit',
-              style: AppTextStyles.caption.copyWith(
-                  color: done ? AppColors.success : AppColors.textSecondary,
-                  fontWeight: FontWeight.w700)),
+          Text('[$target $unit]'.replaceAll(' ]', ']'),
+              style: SysText.mono.copyWith(color: done ? SysColors.ok : SysColors.cyanSoft)),
+          const SizedBox(width: 12),
+          SysCheck(checked: done),
         ]),
       ),
     );
@@ -443,23 +393,17 @@ class _RewardStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.surfaceBorder),
-      ),
-      child: Row(children: [
-        const Text('⚡', style: TextStyle(fontSize: 20)),
-        const SizedBox(width: 6),
-        Text('${quest.xp} XP', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(width: 16),
-        const Text('🪙', style: TextStyle(fontSize: 20)),
-        const SizedBox(width: 6),
-        Text('${quest.gold} gold', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800)),
-        const Spacer(),
-        Text('Boosts ${quest.focusStats}', style: AppTextStyles.caption),
+    return SysPanel(
+      tag: 'Reward',
+      accent: SysColors.gold,
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+          Text('+${quest.xp} XP', style: SysText.mono.copyWith(fontSize: 18, color: SysColors.gold)),
+          Text('+${quest.gold} GOLD', style: SysText.mono.copyWith(fontSize: 18, color: SysColors.gold)),
+        ]),
+        const SizedBox(height: 8),
+        Text('STAT BOOST: ${quest.focusStats.toUpperCase()}',
+            textAlign: TextAlign.center, style: SysText.label),
       ]),
     );
   }

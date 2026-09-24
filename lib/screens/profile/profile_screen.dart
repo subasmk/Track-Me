@@ -2,11 +2,32 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../widgets/edit_profile_sheet.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../models/quest.dart';
 import '../../services/goal_service.dart';
+import '../../services/progression_service.dart';
 import '../../services/quest_service.dart';
 import '../../services/settings_service.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/system_ui.dart';
 import '../achievements/achievements_screen.dart';
+import '../quests/quest_detail_screen.dart';
+import '../settings/settings_screen.dart';
+
+// Instagram-style profile: avatar ring + counts, name/title/bio, action
+// buttons, highlight circles, then reading-site style stat blocks and a
+// grid of quests. Plain dark look on purpose (not the System windows).
+const _bg = Color(0xFF000000);
+const _card = Color(0xFF121212);
+const _line = Color(0xFF262626);
+const _muted = Color(0xFFA8A8A8);
+const _blue = Color(0xFF0095F6);
+const _fire = Color(0xFFFF6A00);
+const _typeColors = <Color>[
+  Color(0xFF833AB4), Color(0xFFFD1D1D), Color(0xFFFCAF45), Color(0xFF0095F6),
+  Color(0xFF2ECC71), Color(0xFFE1306C),
+];
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -14,383 +35,205 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
-    final goalService = context.watch<GoalService>();
-    final questService = context.watch<QuestService>();
+    final goals = context.watch<GoalService>().goals;
+    final quests = context.watch<QuestService>().quests;
+    final progression = context.watch<ProgressionService>();
     final supabase = context.watch<SupabaseService>();
-    final goals = goalService.goals;
-    final quests = questService.quests;
 
-    final overallStreak = goals.isEmpty
-        ? 0
-        : goals.map((g) => g.streak).reduce((a, b) => a > b ? a : b);
-    final longestStreak = goals.isEmpty
-        ? 0
-        : goals.map((g) => g.longestStreak).reduce((a, b) => a > b ? a : b);
-    final totalXp = goals.fold<int>(0, (prev, g) => prev + g.xp);
-    final level = (totalXp / 100).floor() + 1;
-    final levelProgress = (totalXp % 100) / 100.0;
-    final totalTasks = goals.length + quests.length;
-    final totalFriends = supabase.friendsList.length;
+    final streaks = [...goals.map((g) => g.streak), ...quests.map((q) => q.streak)];
+    final bests = [...goals.map((g) => g.longestStreak), ...quests.map((q) => q.longestStreak)];
+    final streak = streaks.isEmpty ? 0 : streaks.reduce((a, b) => a > b ? a : b);
+    final best = bests.isEmpty ? 0 : bests.reduce((a, b) => a > b ? a : b);
+    final cleared = quests.fold<int>(0, (s, q) => s + q.completionHistory.length);
+    final focusMin = quests.fold<int>(0, (s, q) => s + q.focusMinutes);
+    final activeDays = {
+      for (final q in quests)
+        for (final d in q.completionHistory) DateTime(d.year, d.month, d.day)
+    }.length;
 
-    const bgDark = Color(0xFF070D18);
-    const cardColor = Color(0xFF101B2E);
-    const borderColor = Color(0xFF1A2A44);
-    const accentBlue = Color(0xFF2E86DE);
-    const fireOrange = Color(0xFFFF6A00);
-    const textMuted = Color(0xFF8B9CB3);
+    // Focus split by quest type (like a genre split on a reader profile).
+    final split = <String, int>{};
+    for (final q in quests) {
+      split[q.type] = (split[q.type] ?? 0) + 1;
+    }
+    final splitList = split.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final total = split.values.fold<int>(0, (a, b) => a + b);
+    final specialist = splitList.isEmpty ? 'Rookie' : '${splitList.first.key} Specialist';
+
+    final level = progression.level;
+    final handle = settings.userName.toLowerCase().replaceAll(' ', '');
 
     return Scaffold(
-      backgroundColor: bgDark,
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: _bg,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          settings.fullName.isNotEmpty ? settings.fullName : settings.userName,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+        scrolledUnderElevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleSpacing: 0,
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.lock_outline, size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(handle,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20)),
+        ]),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_note, color: Colors.white),
-            tooltip: 'Edit Profile',
-            onPressed: () => _showEditProfileDialog(context, settings),
+            tooltip: 'Medals',
+            icon: const Icon(Icons.emoji_events_outlined),
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const AchievementsScreen())),
           ),
-          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.menu),
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Avatar + Stats
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () => _pickProfileImage(context, settings),
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor: cardColor,
-                        backgroundImage: settings.photoPath != null
-                            ? FileImage(File(settings.photoPath!))
-                            : null,
-                        child: settings.photoPath == null
-                            ? Text(
-                                settings.userName.isNotEmpty
-                                    ? settings.userName[0].toUpperCase()
-                                    : 'U',
-                                style: const TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white),
-                              )
-                            : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: accentBlue,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.camera_alt,
-                              size: 14, color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildHeaderStat('$totalTasks', 'Tasks'),
-                      _buildHeaderStat('$totalFriends', 'Friends'),
-                      _buildHeaderStat('🔥 $overallStreak', 'Streak'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Bio & Level
-            Text(settings.fullName,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18)),
-            Text('@${settings.userName.toLowerCase().replaceAll(' ', '')}',
-                style: const TextStyle(color: textMuted, fontSize: 13)),
-            const SizedBox(height: 4),
-            Text(settings.bio,
-                style: const TextStyle(color: Colors.white, fontSize: 14)),
-            const SizedBox(height: 12),
-
-            // Level Progress Bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: levelProgress,
-                backgroundColor: cardColor,
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                    Color(0xFFFFB020)),
-                minHeight: 6,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Level $level',
-                    style: const TextStyle(color: textMuted, fontSize: 12)),
-                Text('$totalXp XP',
-                    style: const TextStyle(color: textMuted, fontSize: 12)),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Highest Streak Highlight Card
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Highest Streak',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15)),
-                  Row(
-                    children: [
-                      Text('$longestStreak Days',
-                          style: const TextStyle(
-                              color: fireOrange,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.local_fire_department,
-                          color: fireOrange, size: 20),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Tasks Section
-            const Text('TASKS',
-                style: TextStyle(
-                    color: textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.1)),
-            const SizedBox(height: 12),
-            if (goals.isEmpty && quests.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: borderColor),
-                ),
-                child: const Center(
-                  child: Text('No active tasks added yet.',
-                      style: TextStyle(color: textMuted)),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  if (goals.isNotEmpty)
-                    Expanded(
-                        child: _buildTaskCard(
-                            goals[0].title,
-                            '${goals[0].streak}',
-                            cardColor,
-                            borderColor,
-                            fireOrange)),
-                  if (goals.length > 1) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: _buildTaskCard(
-                            goals[1].title,
-                            '${goals[1].streak}',
-                            cardColor,
-                            borderColor,
-                            fireOrange)),
-                  ],
-                  if (quests.isNotEmpty) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: _buildTaskCard(
-                            quests[0].title,
-                            '${quests[0].streak}',
-                            cardColor,
-                            borderColor,
-                            fireOrange)),
-                  ],
-                ],
-              ),
-            Center(
-              child: TextButton(
-                onPressed: () {},
-                child: const Text('View more',
-                    style: TextStyle(color: accentBlue, fontSize: 13)),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Medals Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('MEDALS',
-                    style: TextStyle(
-                        color: textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.1)),
-                GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AchievementsScreen()),
-                  ),
-                  child: const Text('View All',
-                      style: TextStyle(color: accentBlue, fontSize: 13)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Builder(
-              builder: (context) {
-                final unlockedList = <Widget>[];
-                if (level >= 1) {
-                  unlockedList.add(const _MedalPill(icon: Icons.star_rounded, color: Color(0xFFFFB703), unlocked: true));
-                }
-                if (totalTasks >= 1) {
-                  unlockedList.add(const _MedalPill(icon: Icons.shield, color: Color(0xFF38B6FF), unlocked: true));
-                }
-                if (overallStreak >= 3) {
-                  unlockedList.add(const _MedalPill(icon: Icons.emoji_events, color: Color(0xFFFFB703), unlocked: true));
-                }
-                if (overallStreak >= 7) {
-                  unlockedList.add(const _MedalPill(icon: Icons.local_fire_department, color: Color(0xFFFF6A00), unlocked: true));
-                }
-                if (overallStreak >= 14) {
-                  unlockedList.add(const _MedalPill(icon: Icons.whatshot, color: Color(0xFFFF7043), unlocked: true));
-                }
-                if (overallStreak >= 30) {
-                  unlockedList.add(const _MedalPill(icon: Icons.military_tech, color: Color(0xFFFFD54F), unlocked: true));
-                }
-
-                if (unlockedList.isEmpty) {
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: borderColor),
-                    ),
-                    child: const Center(
-                      child: Text('Complete goals & build streaks to unlock medals!', style: TextStyle(color: textMuted)),
-                    ),
-                  );
-                }
-
-                return Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                    children: unlockedList,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _buildHeaderStat(String count, String label) {
-    return Column(
-      children: [
-        Text(count,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(color: Color(0xFF8B9CB3), fontSize: 12)),
-      ],
-    );
-  }
-
-  static Widget _buildTaskCard(String title, String count, Color cardColor,
-      Color borderColor, Color fireOrange) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 32),
         children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(children: [
+              GestureDetector(
+                onTap: () => _pickProfileImage(context, settings),
+                child: _RingAvatar(settings: settings, radius: 42),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                  _Count('${quests.length + goals.length}', 'quests'),
+                  _Count('${supabase.friendsList.length}', 'friends'),
+                  _Count('$streak', 'day streak'),
+                ]),
+              ),
+            ]),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text(count,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-              const SizedBox(width: 4),
-              Icon(Icons.local_fire_department, color: fireOrange, size: 16),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(settings.fullName.isNotEmpty ? settings.fullName : settings.userName,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+              const SizedBox(height: 4),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                _Chip('Lv $level', const Color(0xFFFCAF45)),
+                _Chip('Rank ${SysRank.rank(level)}', _blue),
+                _Chip(specialist, const Color(0xFFE1306C)),
+              ]),
+              if (settings.bio.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(settings.bio, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.3)),
+              ],
+            ]),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(children: [
+              Expanded(
+                  child: _Button('Edit profile',
+                      onTap: () => showEditProfileSheet(context))),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _Button('Share profile', onTap: () {
+                  SharePlus.instance.share(ShareParams(
+                      text: 'Add me on TrackMe: @$handle - Level $level, $streak day streak.',
+                      subject: 'TrackMe profile'));
+                }),
+              ),
+            ]),
+          ),
+          if (quests.isNotEmpty || goals.isNotEmpty)
+            SizedBox(
+              height: 104,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(10, 16, 10, 0),
+                children: [
+                  for (final q in quests)
+                    _Highlight(
+                        emoji: q.emoji,
+                        label: q.title,
+                        streak: q.streak,
+                        onTap: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: q.id)))),
+                  for (final g in goals) _Highlight(emoji: g.emoji, label: g.title, streak: g.streak),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          if (total > 0)
+            _Section(
+              title: 'Focus split',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    height: 10,
+                    child: Row(children: [
+                      for (var i = 0; i < splitList.length; i++)
+                        Expanded(
+                            flex: splitList[i].value,
+                            child: Container(color: _typeColors[i % _typeColors.length])),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(spacing: 14, runSpacing: 6, children: [
+                  for (var i = 0; i < splitList.length; i++)
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                              color: _typeColors[i % _typeColors.length], shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Text('${splitList[i].key} ${(splitList[i].value * 100 / total).round()}%',
+                          style: const TextStyle(color: _muted, fontSize: 12)),
+                    ]),
+                ]),
+              ]),
+            ),
+          _Section(
+            title: 'Activity',
+            child: _StatGrid(items: [
+              ('Quests cleared', '$cleared'),
+              ('Focus minutes', '$focusMin'),
+              ('Days active', '$activeDays'),
+              ('Current streak', '$streak'),
+              ('Best streak', '$best'),
+              ('Gold', '${progression.gold}'),
+            ]),
+          ),
+          _Section(
+            title: 'Reputation',
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text('${progression.totalXp} XP',
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                Text(SysRank.title(level),
+                    style: const TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
+              ]),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progression.levelProgress.clamp(0, 1).toDouble(),
+                  minHeight: 6,
+                  backgroundColor: _line,
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFFFCAF45)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text('${progression.xpIntoLevel} / ${progression.xpForNextLevel} XP to level ${level + 1}',
+                  style: const TextStyle(color: _muted, fontSize: 12)),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          _QuestGrid(quests: quests),
         ],
       ),
     );
@@ -404,114 +247,266 @@ class ProfileScreen extends StatelessWidget {
       await settings.updateProfile(
         fullName: settings.fullName,
         bio: settings.bio,
-        photoPath: picked.path,
+        photoPath: await keepPhoto(picked.path),
       );
     }
   }
+}
 
-  static void _showEditProfileDialog(
-      BuildContext context, SettingsService settings) {
-    final nameCtrl = TextEditingController(text: settings.fullName);
-    final usernameCtrl = TextEditingController(text: settings.userName);
-    final bioCtrl = TextEditingController(text: settings.bio);
+class _RingAvatar extends StatelessWidget {
+  final SettingsService settings;
+  final double radius;
+  const _RingAvatar({required this.settings, required this.radius});
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF101B2E),
-        title:
-            const Text('Edit Profile', style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: usernameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  labelStyle: TextStyle(color: Color(0xFF8B9CB3)),
-                  prefixIcon:
-                      Icon(Icons.alternate_email, color: Color(0xFF8B9CB3)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: bioCtrl,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 2,
-                decoration: const InputDecoration(
-                    labelText: 'Bio',
-                    labelStyle: TextStyle(color: Color(0xFF8B9CB3))),
-              ),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    final photo = settings.photoPath;
+    final hasPhoto = photo != null && File(photo).existsSync();
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(colors: [
+          Color(0xFFFCAF45), Color(0xFFFD1D1D), Color(0xFFE1306C), Color(0xFF833AB4), Color(0xFFFCAF45),
+        ]),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: const BoxDecoration(color: _bg, shape: BoxShape.circle),
+        child: Stack(children: [
+          CircleAvatar(
+            radius: radius,
+            backgroundColor: _card,
+            backgroundImage: hasPhoto ? FileImage(File(photo)) : null,
+            child: hasPhoto
+                ? null
+                : Text(settings.userName.isNotEmpty ? settings.userName[0].toUpperCase() : 'U',
+                    style: TextStyle(
+                        fontSize: radius * 0.8, fontWeight: FontWeight.w700, color: Colors.white)),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF8B9CB3))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E86DE),
-              foregroundColor: Colors.white,
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                  color: _blue, shape: BoxShape.circle, border: Border.all(color: _bg, width: 2)),
+              child: const Icon(Icons.add, size: 14, color: Colors.white),
             ),
-            onPressed: () async {
-              final newUsername = usernameCtrl.text.trim();
-              if (newUsername.isNotEmpty) {
-                await settings.setUserName(newUsername);
-                await settings.updateProfile(
-                  fullName: nameCtrl.text.trim(),
-                  bio: bioCtrl.text.trim(),
-                );
-                if (context.mounted) {
-                  context.read<GoalService>().setUserName(newUsername);
-                  context.read<SupabaseService>().updateUsername(newUsername);
-                  Navigator.pop(ctx);
-                }
-              }
-            },
-            child: const Text('Save Profile'),
           ),
-        ],
+        ]),
       ),
     );
   }
 }
 
-class _MedalPill extends StatelessWidget {
-  final IconData icon;
+class _Count extends StatelessWidget {
+  final String value;
+  final String label;
+  const _Count(this.value, this.label);
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+      ]);
+}
+
+class _Chip extends StatelessWidget {
+  final String text;
   final Color color;
-  final bool unlocked;
+  const _Chip(this.text, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      );
+}
 
-  const _MedalPill(
-      {required this.icon, required this.color, required this.unlocked});
+class _Button extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+  const _Button(this.text, {required this.onTap});
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFF262626),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: SizedBox(
+            height: 34,
+            child: Center(
+                child: Text(text,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14))),
+          ),
+        ),
+      );
+}
 
+class _Highlight extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final int streak;
+  final VoidCallback? onTap;
+  const _Highlight({required this.emoji, required this.label, required this.streak, this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: 76,
+          child: Column(children: [
+            Stack(clipBehavior: Clip.none, children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _card,
+                  border: Border.all(color: const Color(0xFF3A3A3A), width: 1.5),
+                ),
+                child: Center(child: Text(emoji, style: const TextStyle(fontSize: 26))),
+              ),
+              if (streak > 0)
+                Positioned(
+                  bottom: -4,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(color: _fire, borderRadius: BorderRadius.circular(8)),
+                      child: Text('🔥$streak',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 11)),
+          ]),
+        ),
+      );
+}
+
+class _Section extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _Section({required this.title, required this.child});
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _line),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 12),
+          child,
+        ]),
+      );
+}
+
+class _StatGrid extends StatelessWidget {
+  final List<(String, String)> items;
+  const _StatGrid({required this.items});
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
+        final w = (c.maxWidth - 16) / 3;
+        return Wrap(spacing: 8, runSpacing: 14, children: [
+          for (final (label, value) in items)
+            SizedBox(
+              width: w,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(value,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(label, style: const TextStyle(color: _muted, fontSize: 12)),
+              ]),
+            ),
+        ]);
+      });
+}
+
+class _QuestGrid extends StatelessWidget {
+  final List<Quest> quests;
+  const _QuestGrid({required this.quests});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: unlocked
-            ? color.withValues(alpha: 0.12)
-            : const Color(0xFF0A111E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: unlocked
-              ? color.withValues(alpha: 0.4)
-              : const Color(0xFF1A2A44),
-        ),
+    return Column(children: [
+      Container(
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
+        child: Row(children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.white, width: 1.5))),
+              child: const Icon(Icons.grid_on, color: Colors.white, size: 24),
+            ),
+          ),
+        ]),
       ),
-      child: Icon(icon, color: color, size: 22),
-    );
+      if (quests.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(32),
+          child: Text('No quests yet', style: TextStyle(color: _muted)),
+        )
+      else
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 2,
+          crossAxisSpacing: 2,
+          padding: const EdgeInsets.only(top: 2),
+          children: [
+            for (var i = 0; i < quests.length; i++)
+              GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => QuestDetailScreen(questId: quests[i].id))),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        _typeColors[i % _typeColors.length].withValues(alpha: 0.55),
+                        const Color(0xFF111111),
+                      ],
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: Stack(children: [
+                    Center(child: Text(quests[i].emoji, style: const TextStyle(fontSize: 34))),
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      right: 0,
+                      child: Text(quests[i].title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                    ),
+                    if (quests[i].isCompletedToday)
+                      const Positioned(
+                          right: 0, top: 0, child: Icon(Icons.check_circle, color: Colors.white, size: 16)),
+                  ]),
+                ),
+              ),
+          ],
+        ),
+    ]);
   }
 }

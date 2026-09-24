@@ -11,17 +11,46 @@ class SettingsService extends ChangeNotifier {
   static const String _keyPhotoPath = 'photo_path';
   static const String _keyOnboardingSeen = 'onboarding_seen';
 
+  // Preferences shown on the Settings screen. The reminder keys are read
+  // directly by ReminderService (it has no provider access), so keep the
+  // names in sync with ReminderService.keyRemindersEnabled etc.
+  static const String keyRemindersEnabled = 'reminders_enabled';
+  static const String keyStreakNudge = 'streak_nudge_enabled';
+  static const String keyStreakNudgeTime = 'streak_nudge_time';
+  static const String keyReduceMotion = 'reduce_motion';
+  static const String keyDiscoverable = 'discoverable';
+  static const String keyShareQuests = 'share_quests_on_profile';
+  static const String keyWidgetStyle = 'widget_style';
+  static const String keyWidgetBgPath = 'widget_bg_path';
+
   String _userName = 'Learner';
   String _fullName = 'Daily Tracker';
   String _bio = 'Building consistency day by day 🔥';
   String? _photoPath;
   bool _onboardingSeen = false;
+  bool _remindersEnabled = true;
+  bool _streakNudge = true;
+  String _streakNudgeTime = '20:00';
+  bool _reduceMotion = false;
+  bool _discoverable = true;
+  bool _shareQuests = true;
+  String _widgetStyle = 'auto';
+  String? _widgetBgPath;
 
   String get userName => _userName;
   String get fullName => _fullName;
   String get bio => _bio;
   String? get photoPath => _photoPath;
   bool get onboardingSeen => _onboardingSeen;
+  bool get remindersEnabled => _remindersEnabled;
+  bool get streakNudge => _streakNudge;
+  String get streakNudgeTime => _streakNudgeTime;
+  bool get reduceMotion => _reduceMotion;
+  bool get discoverable => _discoverable;
+  bool get shareQuests => _shareQuests;
+  /// 'auto' = Duolingo-style urgency colors, otherwise a WidgetTheme id.
+  String get widgetStyle => _widgetStyle;
+  String? get widgetBgPath => _widgetBgPath;
 
   SettingsService() {
     _load();
@@ -34,6 +63,64 @@ class SettingsService extends ChangeNotifier {
     _bio = (box.get(_keyBio) as String?) ?? 'Building consistency day by day 🔥';
     _photoPath = box.get(_keyPhotoPath) as String?;
     _onboardingSeen = (box.get(_keyOnboardingSeen) as bool?) ?? false;
+    _remindersEnabled = (box.get(keyRemindersEnabled) as bool?) ?? true;
+    _streakNudge = (box.get(keyStreakNudge) as bool?) ?? true;
+    _streakNudgeTime = (box.get(keyStreakNudgeTime) as String?) ?? '20:00';
+    _reduceMotion = (box.get(keyReduceMotion) as bool?) ?? false;
+    _discoverable = (box.get(keyDiscoverable) as bool?) ?? true;
+    _shareQuests = (box.get(keyShareQuests) as bool?) ?? true;
+    _widgetStyle = (box.get(keyWidgetStyle) as String?) ?? 'auto';
+    _widgetBgPath = box.get(keyWidgetBgPath) as String?;
+  }
+
+  Future<void> _put(String key, Object value) async {
+    await HiveService.settingsBox.put(key, value);
+    notifyListeners();
+  }
+
+  Future<void> setRemindersEnabled(bool v) {
+    _remindersEnabled = v;
+    return _put(keyRemindersEnabled, v);
+  }
+
+  Future<void> setStreakNudge(bool v) {
+    _streakNudge = v;
+    return _put(keyStreakNudge, v);
+  }
+
+  Future<void> setStreakNudgeTime(String hhmm) {
+    _streakNudgeTime = hhmm;
+    return _put(keyStreakNudgeTime, hhmm);
+  }
+
+  Future<void> setReduceMotion(bool v) {
+    _reduceMotion = v;
+    return _put(keyReduceMotion, v);
+  }
+
+  Future<void> setDiscoverable(bool v) {
+    _discoverable = v;
+    return _put(keyDiscoverable, v);
+  }
+
+  Future<void> setWidgetStyle(String style) {
+    _widgetStyle = style;
+    return _put(keyWidgetStyle, style);
+  }
+
+  Future<void> setWidgetBackground(String? path) async {
+    _widgetBgPath = path;
+    if (path == null) {
+      await HiveService.settingsBox.delete(keyWidgetBgPath);
+      notifyListeners();
+    } else {
+      await _put(keyWidgetBgPath, path);
+    }
+  }
+
+  Future<void> setShareQuests(bool v) {
+    _shareQuests = v;
+    return _put(keyShareQuests, v);
   }
 
   Future<void> setUserName(String name) async {
