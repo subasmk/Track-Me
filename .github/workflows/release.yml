@@ -1,0 +1,37 @@
+name: Publish APK release
+
+# Manual only: attaches the APKs from a finished "Build TrackMe APK" run
+# to an existing GitHub release (draft or published).
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build run ID whose trackme-apks artifact to publish'
+        required: true
+      tag:
+        description: 'Release tag to attach the APKs to (e.g. v1.1)'
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APKs from the build run
+        uses: actions/download-artifact@v4
+        with:
+          name: trackme-apks
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: apks
+
+      - name: Attach APKs to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          ls -la apks
+          gh release upload "$TAG" apks/*.apk --clobber --repo "$GITHUB_REPOSITORY"
