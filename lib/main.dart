@@ -13,6 +13,7 @@ import 'services/settings_service.dart';
 import 'services/progression_service.dart';
 import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
+import 'screens/auth/claim_data_screen.dart';
 import 'screens/auth/setup_profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/home/home_screen.dart';
@@ -69,6 +70,7 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     ReminderService.rescheduleAll(_questService.quests);
     _settingsService = SettingsService();
     _supabaseService = SupabaseService();
+    _supabaseService.onLocalDataReplaced = _reloadAccountData;
 
     // Initialize Supabase in background
     _supabaseService.initSupabase();
@@ -116,6 +118,19 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
     if (items.isNotEmpty) await _questService.syncWidget();
   }
 
+  /// The live data now belongs to another account: reload every service
+  /// and push the new data to the home-screen widgets.
+  void _reloadAccountData() {
+    _settingsService.reloadFromDisk();
+    _progression.reload();
+    _goalService.setUserName(_settingsService.userName);
+    _goalService.notifyExternalChange();
+    _questService.reloadFromDisk();
+    ReminderService.rescheduleAll(_questService.quests);
+    HomeWidgetService.saveWidgetStyle(
+        style: _settingsService.widgetStyle, bgPath: _settingsService.widgetBgPath);
+  }
+
   void _onSettingsChanged() {
     _goalService.setUserName(_settingsService.userName);
     _supabaseService.updateUsername(_settingsService.userName);
@@ -128,6 +143,9 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
       quests: _questService.quests,
       shareQuests: _settingsService.shareQuests,
       discoverable: _settingsService.discoverable,
+      fullName: _settingsService.fullName,
+      bio: _settingsService.bio,
+      photoPath: _settingsService.photoPath,
     );
   }
 
@@ -196,6 +214,10 @@ class _TrackMeAppState extends State<TrackMeApp> with WidgetsBindingObserver {
           builder: (context) {
             final supabase = context.watch<SupabaseService>();
             if (supabase.isLoggedIn) {
+              if (supabase.needsOwnerChoice) return const ClaimDataScreen();
+              if (!supabase.dataReady) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
               // New accounts pick a unique username, name, bio and photo first.
               return supabase.profileComplete
                   ? const HomeScreen()

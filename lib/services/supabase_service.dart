@@ -9,6 +9,7 @@ import '../models/team_quest.dart';
 import '../models/goal.dart';
 import '../models/quest.dart';
 import '../models/quest_item.dart';
+import 'account_data_service.dart';
 import 'hive_service.dart';
 import 'goal_service.dart';
 import 'quest_service.dart';
@@ -103,7 +104,10 @@ class SupabaseService extends ChangeNotifier {
     if (!_clientReady || currentUser == null) return false;
     final uid = currentUser!.id;
     try {
-      await Supabase.instance.client.storage.from('avatars').remove(['$uid/avatar.jpg']);
+      final stored = HiveService.settingsBox.get(_keyCloudAvatarPath) as String?;
+      await Supabase.instance.client.storage
+          .from('avatars')
+          .remove(['$uid/avatar.jpg', if (stored != null) stored]);
     } catch (_) {}
     try {
       await Supabase.instance.client.rpc('delete_my_account');
@@ -117,6 +121,7 @@ class SupabaseService extends ChangeNotifier {
   }
 
   String _currentUsername = 'Learner';
+  bool _healing = false;
   String get currentUsername => _currentUsername;
 
   List<String> _friendsList = [];
@@ -144,10 +149,9 @@ class SupabaseService extends ChangeNotifier {
       // authRedirectUrl and supabase_flutter exchanges it for a session.
       // Re-render so the app leaves the auth screen right away.
       _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
-        refreshProfileStatus();
-        notifyListeners();
+        _onUserChanged();
       });
-      await refreshProfileStatus();
+      await _onUserChanged();
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
@@ -197,6 +201,52 @@ class SupabaseService extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------
+  // Per-account data on this phone
+  // ---------------------------------------------------------------------
+
+  /// Called after the live goals/quests/settings were swapped to another
+  /// account (or refilled from the cloud) so every service reloads.
+  VoidCallback? onLocalDataReplaced;
+
+  /// False while the signed-in account's data is not in the live boxes yet.
+  bool get dataReady {
+    final uid = currentUser?.id;
+    return uid == null || AccountDataService.isActive(uid);
+  }
+
+  /// An older build mixed two accounts' data on this phone; ask who owns it.
+  bool get needsOwnerChoice {
+    final uid = currentUser?.id;
+    return uid != null && AccountDataService.needsOwnerChoice(uid);
+  }
+
+  Future<void> resolveMixedData({required bool keepHere}) async {
+    final uid = currentUser?.id;
+    if (uid == null) return;
+    await AccountDataService.resolveMixed(uid, keepHere: keepHere);
+    _loadLocalState();
+    onLocalDataReplaced?.call();
+    await refreshProfileStatus();
+    notifyListeners();
+  }
+
+  String? _handledUid;
+  Future<void> _onUserChanged() async {
+    final uid = currentUser?.id;
+    if (uid != null && uid != _handledUid && !AccountDataService.needsOwnerChoice(uid)) {
+      _handledUid = uid;
+      if (!AccountDataService.isActive(uid)) {
+        await AccountDataService.activate(uid);
+        _loadLocalState();
+        onLocalDataReplaced?.call();
+      }
+    }
+    if (uid == null) _handledUid = null;
+    await refreshProfileStatus();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------
   // Per-user profile (multi-user). Table + RLS: supabase/schema.sql
   // ---------------------------------------------------------------------
 
@@ -225,11 +275,17 @@ class SupabaseService extends ChangeNotifier {
     try {
       final row = await Supabase.instance.client
           .from('profiles')
-          .select('username')
+          .select('username, full_name, bio')
           .eq('id', uid)
           .maybeSingle();
       if (row != null) {
         _currentUsername = row['username'] as String;
+        final box = HiveService.settingsBox;
+        await box.put('user_name', _currentUsername);
+        await box.put('full_name', (row['full_name'] as String?) ?? _currentUsername);
+        await box.put('user_bio', (row['bio'] as String?) ?? '');
+        _saveLocalState();
+        onLocalDataReplaced?.call();
         await _markProfileComplete();
       }
     } catch (e) {
@@ -263,25 +319,15 @@ class SupabaseService extends ChangeNotifier {
     final uid = currentUser?.id;
     var cloudOk = false;
     if (_clientReady && uid != null) {
+      // Save the profile row first, on its own: a photo problem must never
+      // stop the username from being claimed and the profile from showing
+      // up in search.
       try {
-        String? avatarUrl;
-        if (avatarPath != null && !avatarPath.startsWith('http')) {
-          final file = File(avatarPath);
-          if (await file.exists()) {
-            final path = '$uid/avatar.jpg';
-            await Supabase.instance.client.storage.from('avatars').upload(
-                path, file,
-                fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'));
-            avatarUrl =
-                '${Supabase.instance.client.storage.from('avatars').getPublicUrl(path)}?v=${DateTime.now().millisecondsSinceEpoch}';
-          }
-        }
         await Supabase.instance.client.from('profiles').upsert({
           'id': uid,
           'username': username.toLowerCase(),
           'full_name': fullName,
           'bio': bio,
-          if (avatarUrl != null) 'avatar_url': avatarUrl,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         });
         cloudOk = true;
@@ -291,11 +337,41 @@ class SupabaseService extends ChangeNotifier {
       } catch (e) {
         debugPrint('saveMyProfile: $e');
       }
+      if (cloudOk && avatarPath != null && !avatarPath.startsWith('http')) {
+        await _uploadAvatar(uid, avatarPath);
+      }
     }
     _currentUsername = username.toLowerCase();
     _saveLocalState();
     await _markProfileComplete();
     return cloudOk;
+  }
+
+  static const _keyCloudAvatarPath = 'cloud_avatar_path';
+
+  /// Uploads to a new file name each time (insert only, no overwrite), so it
+  /// works with the plain INSERT policy in schema.sql, then removes the old one.
+  Future<void> _uploadAvatar(String uid, String localPath) async {
+    try {
+      final file = File(localPath);
+      if (!await file.exists()) return;
+      final storage = Supabase.instance.client.storage.from('avatars');
+      final path = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await storage.upload(path, file,
+          fileOptions: const FileOptions(upsert: false, contentType: 'image/jpeg'));
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'avatar_url': storage.getPublicUrl(path)}).eq('id', uid);
+      final old = HiveService.settingsBox.get(_keyCloudAvatarPath) as String?;
+      await HiveService.settingsBox.put(_keyCloudAvatarPath, path);
+      if (old != null && old != path) {
+        try {
+          await storage.remove([old]);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('avatar upload failed: $e');
+    }
   }
 
   @override
@@ -344,6 +420,9 @@ class SupabaseService extends ChangeNotifier {
     required List<Quest> quests,
     bool shareQuests = true,
     bool discoverable = true,
+    String? fullName,
+    String? bio,
+    String? photoPath,
   }) async {
     final maxStreak = goals.fold<int>(0, (prev, g) => g.streak > prev ? g.streak : prev);
     final longest = goals.fold<int>(0, (prev, g) => g.longestStreak > prev ? g.longestStreak : prev);
@@ -392,7 +471,28 @@ class SupabaseService extends ChangeNotifier {
           ..remove('id')
           ..remove('username')
           ..['discoverable'] = discoverable;
-        await Supabase.instance.client.from('profiles').update(data).eq('id', userId);
+        final rows = await Supabase.instance.client
+            .from('profiles')
+            .update(data)
+            .eq('id', userId)
+            .select('id');
+        if (rows.isEmpty && !_healing && _currentUsername != 'Learner') {
+          // Setup finished on this phone but the cloud row never got
+          // written (older builds dropped it when the photo upload failed).
+          _healing = true;
+          try {
+            await saveMyProfile(
+                username: _currentUsername,
+                fullName: fullName ?? _currentUsername,
+                bio: bio ?? '',
+                avatarPath: photoPath);
+            await Supabase.instance.client.from('profiles').update(data).eq('id', userId);
+          } on UsernameTakenException {
+            debugPrint('cloud profile repair: @$_currentUsername is taken');
+          } finally {
+            _healing = false;
+          }
+        }
         await HiveService.settingsBox
             .put('cloud_last_synced_at', DateTime.now().toIso8601String());
       } catch (e) {

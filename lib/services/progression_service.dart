@@ -10,6 +10,9 @@ class ProgressionService extends ChangeNotifier {
   static const _kXp = 'progress_total_xp';
   static const _kGold = 'progress_total_gold';
 
+  /// After the settings box was swapped to another account's data.
+  void reload() => notifyListeners();
+
   int get totalXp => (_box.get(_kXp) as int?) ?? 0;
   int get gold => (_box.get(_kGold) as int?) ?? 0;
 

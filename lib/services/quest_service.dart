@@ -283,6 +283,13 @@ class QuestService extends ChangeNotifier {
     await HomeWidgetService.syncQuests(quests);
   }
 
+  /// After the live box was swapped to another account's quests.
+  Future<void> reloadFromDisk() async {
+    reconcileDay();
+    notifyListeners();
+    await _sync();
+  }
+
   /// Exposed for screens that want to force a widget refresh (e.g. right
   /// before asking the launcher to pin a new widget).
   Future<bool> syncWidget() => HomeWidgetService.syncQuests(quests);
