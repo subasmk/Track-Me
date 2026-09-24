@@ -9,7 +9,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/widget_themes.dart';
-import '../../widgets/sloth_mascot.dart';
+import '../../widgets/sloth_sticker.dart';
 import '../../widgets/goal_heatmap_calendar.dart';
 import '../../widgets/note_card.dart';
 import 'celebration_screen.dart';
@@ -275,10 +275,7 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
             Center(
               child: Column(
                 children: [
-                  SlothMascot(
-                    size: 110,
-                    mood: doneToday ? SlothMood.happy : SlothMood.idle,
-                  ),
+                  SlothStickerView(sticker: _goalSticker(goal.streak, doneToday), size: 150),
                   const SizedBox(height: AppSpacing.md),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -292,7 +289,7 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text('Keep it up!', style: AppTextStyles.bodyMuted),
+                  Text(_goalLine(goal.streak, doneToday), style: AppTextStyles.bodyMuted),
                 ],
               ),
             ),
@@ -586,4 +583,19 @@ class _StatChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Same illustrated sloth as the home-screen widgets.
+SlothSticker _goalSticker(int streak, bool doneToday) {
+  final hour = DateTime.now().hour;
+  if (doneToday) return streak >= 7 ? SlothSticker.levelUp : SlothSticker.cheering;
+  if (hour >= 22 || hour < 5) return SlothSticker.sleepy;
+  if (hour >= 19 && streak > 0) return SlothSticker.worried;
+  return SlothSticker.ready;
+}
+
+String _goalLine(int streak, bool doneToday) {
+  if (doneToday) return streak >= 7 ? 'On fire! Keep it up!' : 'Nice work! Keep it up!';
+  if (streak == 0) return 'Start your streak today';
+  return 'Keep your streak alive today';
 }

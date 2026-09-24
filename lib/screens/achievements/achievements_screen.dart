@@ -5,7 +5,7 @@ import '../../services/goal_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/sloth_mascot.dart';
+import '../../widgets/sloth_sticker.dart';
 
 class AchievementsScreen extends StatelessWidget {
   const AchievementsScreen({super.key});
@@ -38,7 +38,7 @@ class AchievementsScreen extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const SlothMascot(size: 64, showGlow: false),
+                  const SlothStickerView(sticker: SlothSticker.happy, size: 72, glow: false),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
