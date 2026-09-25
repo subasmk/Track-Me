@@ -62,10 +62,18 @@ void main() {
       expect(headers['x-api-key'], 'k');
       expect(body['system'], AiService.systemPrompt);
     });
+    test('default models use current stable IDs', () {
+      expect(AiService.providerById('gemini').models, ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
+      expect(AiService.providerById('openai').models, ['gpt-4o-mini']);
+    });
     test('gemini request', () {
-      final (uri, headers, _) = AiService.buildRequest(AiService.providerById('gemini'), 'g', 'k', turns);
+      final (uri, headers, body) = AiService.buildRequest(AiService.providerById('gemini'), 'g', 'k', turns);
       expect(uri.path, contains('/models/g:generateContent'));
       expect(headers['x-goog-api-key'], 'k');
+      expect(body['systemInstruction']['parts'][0]['text'], AiService.systemPrompt);
+      expect(body['contents'][0]['role'], 'user');
+      expect(body['contents'][0]['parts'][0]['text'], 'learn AWS');
+      expect(body['generationConfig']['responseMimeType'], 'application/json');
     });
     test('extract text from openai and anthropic responses', () {
       expect(AiService.extractText('{"choices":[{"message":{"role":"assistant","content":"{\\"kind\\":\\"none\\"}"}}]}'),
