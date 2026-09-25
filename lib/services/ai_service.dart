@@ -89,7 +89,7 @@ class AiService {
       note: 'Recommended. Free tier, no card needed.',
       keyUrl: 'https://aistudio.google.com/apikey',
       keyHint: 'AIza... or AQ...',
-      models: ['gemini-flash-latest', 'gemini-2.5-flash-lite'],
+      models: ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'],
     ),
     AiProvider(
       id: 'openai',
@@ -97,7 +97,7 @@ class AiService {
       note: 'Paid per use.',
       keyUrl: 'https://platform.openai.com/api-keys',
       keyHint: 'sk-...',
-      models: ['gpt-5.6-luna', 'gpt-4o-mini'],
+      models: ['gpt-4o-mini'],
       baseUrl: 'https://api.openai.com/v1',
     ),
     AiProvider(
@@ -324,7 +324,7 @@ Keep targets realistic for a beginner unless the user says otherwise. Use sets 1
       throw const AiException('model:This AI model is not available right now. You can set a model name in the key menu.');
     }
     if (res.statusCode == 429) {
-      throw const AiException('model:AI usage limit reached for now. Try again in a minute.');
+      throw const AiException('AI usage limit reached for now. Check your provider quota and try later.');
     }
     if (res.statusCode == 402) {
       throw AiException('Your ${p.name} account has no credit left. Add credit or switch provider (key icon).');
@@ -332,7 +332,7 @@ Keep targets realistic for a beginner unless the user says otherwise. Use sets 1
     if (res.statusCode == 400 || res.statusCode == 401 || res.statusCode == 403) {
       throw AiException('Your ${p.name} key was rejected. Check it in the AI menu (key icon).');
     }
-    if (res.statusCode >= 500) throw const AiException('model:The AI service is busy. Try again.');
+    if (res.statusCode >= 500) throw const AiException('The AI service is busy. Try again.');
     if (res.statusCode != 200) throw AiException('AI error (${res.statusCode}).');
 
     final text = extractText(res.body);
