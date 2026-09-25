@@ -13,7 +13,12 @@ const List<String> _emojiOptions = [
 ];
 
 class AddGoalScreen extends StatefulWidget {
-  const AddGoalScreen({super.key});
+  /// Pre-fill values (e.g. from the AI assistant). Nothing is saved until
+  /// the user taps Create.
+  final String? initialTitle;
+  final String? initialEmoji;
+  final int? initialMinutes;
+  const AddGoalScreen({super.key, this.initialTitle, this.initialEmoji, this.initialMinutes});
 
   @override
   State<AddGoalScreen> createState() => _AddGoalScreenState();
@@ -25,6 +30,14 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   WidgetTheme _selectedTheme = WidgetThemes.purple;
   double _dailyMinutes = 30;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTitle != null) _titleController.text = widget.initialTitle!;
+    if (widget.initialEmoji != null) _selectedEmoji = widget.initialEmoji!;
+    if (widget.initialMinutes != null) _dailyMinutes = widget.initialMinutes!.toDouble();
+  }
 
   @override
   void dispose() {
@@ -135,7 +148,10 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: _emojiOptions.map((emoji) {
+              children: [
+                if (!_emojiOptions.contains(_selectedEmoji)) _selectedEmoji,
+                ..._emojiOptions,
+              ].map((emoji) {
                 final selected = emoji == _selectedEmoji;
                 return InkWell(
                   onTap: () => setState(() => _selectedEmoji = emoji),

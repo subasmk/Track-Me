@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../ai/ai_chat_screen.dart';
 import 'dart:io';
 import '../../services/goal_service.dart';
 import '../../services/progression_service.dart';
@@ -383,6 +384,22 @@ void _showCreateModal(BuildContext context) {
         children: [
           Text('Create New Task', style: AppTextStyles.title),
           const SizedBox(height: AppSpacing.md),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFF1E6BFF),
+              child: Icon(Icons.auto_awesome_rounded, color: Colors.white),
+            ),
+            title: const Text('Create with AI', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('Describe it and the System drafts a quest or goal'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiChatScreen()),
+              );
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const CircleAvatar(
               backgroundColor: AppColors.purpleMid,

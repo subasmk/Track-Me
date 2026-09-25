@@ -11,7 +11,11 @@ import '../../models/quest_templates.dart';
 
 class AddQuestScreen extends StatefulWidget {
   final Quest? existingQuest;
-  const AddQuestScreen({super.key, this.existingQuest});
+
+  /// Pre-fills the form (e.g. from the AI assistant). Nothing is saved
+  /// until the user taps Create.
+  final QuestTemplate? draft;
+  const AddQuestScreen({super.key, this.existingQuest, this.draft});
 
   @override
   State<AddQuestScreen> createState() => _AddQuestScreenState();
@@ -43,6 +47,17 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
   @override
   void initState() {
     super.initState();
+    final draft = widget.draft;
+    if (!_isEditing && draft != null) {
+      _titleController.text = draft.title;
+      _emoji = draft.emoji;
+      _type = draft.type;
+      _difficulty = draft.difficulty;
+      _startTime = draft.startTime;
+      _endTime = draft.endTime;
+      _targetDays = List<int>.from(draft.days);
+      _items.addAll(draft.buildItems(() => _uuid.v4()));
+    }
     if (_isEditing) {
       final q = widget.existingQuest!;
       _titleController.text = q.title;
@@ -317,7 +332,7 @@ class _AddQuestScreenState extends State<AddQuestScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            if (!_isEditing) _templateStrip(),
+            if (!_isEditing && widget.draft == null) _templateStrip(),
             // Emoji picker
             Center(
               child: GestureDetector(
