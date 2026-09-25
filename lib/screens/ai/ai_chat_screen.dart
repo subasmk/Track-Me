@@ -254,7 +254,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       children: [
         _bot(const _Msg(false,
-            'Hunter, tell me what you want to become. I will draft a quest. You review it before anything is added.')),
+            'Human, tell me what you want to become. I will draft a quest. You review it before anything is added.')),
         if (_msgs.isEmpty) ...[
           const SizedBox(height: 6),
           Wrap(spacing: 8, runSpacing: 8, children: [

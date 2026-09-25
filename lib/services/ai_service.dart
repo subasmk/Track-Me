@@ -93,6 +93,7 @@ Return ONLY JSON with this shape:
   },
   "goal": {"title": "max 30 chars", "emoji": "one emoji", "minutes": integer 5-180}
 }
+If you address the user, call them "human". Never call them "hunter" or "player".
 Keep targets realistic for a beginner unless the user says otherwise. Use sets 1 unless it is a rep-based exercise.
 ''';
 
