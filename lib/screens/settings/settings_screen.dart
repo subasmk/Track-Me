@@ -18,7 +18,7 @@ import '../../widgets/edit_profile_sheet.dart';
 import '../../widgets/pin_quest_widget.dart';
 import '../../widgets/system_ui.dart';
 
-const appVersion = '1.0.0';
+const appVersion = '3.0.0';
 const _repoUrl = 'https://github.com/subasmk/Track-Me';
 
 class SettingsScreen extends StatefulWidget {
