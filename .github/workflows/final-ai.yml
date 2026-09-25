@@ -1,0 +1,37 @@
+name: Add AI regression tests
+on:
+  push:
+    branches: [feature/ai-quest-builder]
+    paths: [.github/workflows/final-ai.yml]
+permissions:
+  contents: write
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact tested files
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          test = Path('test/ai_service_test.dart')
+          s = test.read_text()
+          old = "    test('gemini request', () {"
+          new = "    test('default models use current stable IDs', () {\n      expect(AiService.providerById('gemini').models, ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);\n      expect(AiService.providerById('openai').models, ['gpt-4o-mini']);\n    });\n" + old
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          old = "final (uri, headers, _) = AiService.buildRequest(AiService.providerById('gemini'), 'g', 'k', turns);"
+          new = "final (uri, headers, body) = AiService.buildRequest(AiService.providerById('gemini'), 'g', 'k', turns);"
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          old = "      expect(headers['x-goog-api-key'], 'k');"
+          new = old + "\n      expect(body['systemInstruction']['parts'][0]['text'], AiService.systemPrompt);\n      expect(body['contents'][0]['role'], 'user');\n      expect(body['contents'][0]['parts'][0]['text'], 'learn AWS');\n      expect(body['generationConfig']['responseMimeType'], 'application/json');"
+          assert s.count(old) == 1
+          test.write_text(s.replace(old, new))
+          PYCODE
+          test "$(git hash-object test/ai_service_test.dart)" = a4b406bcebe1979dfd81994132564c9ce23ea187
+          git config user.name subasmk
+          git config user.email subasmk@users.noreply.github.com
+          git add test/ai_service_test.dart
+          git commit -m 'Cover AI model defaults and Gemini request'
+          git push origin HEAD:feature/ai-quest-builder
