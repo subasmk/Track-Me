@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/quest.dart';
@@ -22,7 +25,9 @@ class _Msg {
 class AiChatScreen extends StatefulWidget {
   /// For previews and tests: skip the key check and show these messages.
   final List<(bool fromUser, String text, AiDraft? draft)>? debugMessages;
-  const AiChatScreen({super.key, this.debugMessages});
+  /// For previews: show the composer in its listening state.
+  final bool debugListening;
+  const AiChatScreen({super.key, this.debugMessages, this.debugListening = false});
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -43,6 +48,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool? _hasKey;
   bool _busy = false;
 
+  // Voice input: on-device speech-to-text. Spoken words land in the
+  // composer so they can be edited before sending.
+  final _speech = SpeechToText();
+  bool _speechReady = false;
+  bool _listening = false;
+  String _textBeforeVoice = '';
+
   static const _suggestions = [
     'I want to learn AWS in 30 days',
     'Morning workout for a beginner',
@@ -56,6 +68,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
     final dbg = widget.debugMessages;
     if (dbg != null) {
       _hasKey = true;
+      _listening = widget.debugListening;
+      if (_listening) _input.text = 'I want to run a 5K in two months';
       _msgs.addAll(dbg.map((m) => _Msg(m.$1, m.$2, draft: m.$3)));
     } else {
       AiService.hasKey().then((v) {
@@ -66,12 +80,85 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   void dispose() {
+    if (_listening && !widget.debugListening) _speech.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _toggleVoice() async {
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    if (!_speechReady) {
+      try {
+        _speechReady = await _speech.initialize(
+          onStatus: (s) {
+            if ((s == 'done' || s == 'notListening') && mounted && _listening) {
+              setState(() => _listening = false);
+            }
+          },
+          onError: (SpeechRecognitionError e) {
+            if (mounted) setState(() => _listening = false);
+            if (e.errorMsg == 'error_no_match' || e.errorMsg == 'error_speech_timeout') {
+              _toast("Didn't catch that. Tap the mic and try again.");
+            } else if (e.errorMsg.contains('permission')) {
+              _toast('Microphone access is off. Allow it in Settings to use voice.');
+            } else if (e.errorMsg.contains('network')) {
+              _toast('Voice needs a connection on this phone. You can type instead.');
+            }
+          },
+        );
+      } catch (_) {
+        _speechReady = false;
+      }
+      if (!_speechReady) {
+        final perm = await _speech.hasPermission.catchError((_) => false);
+        _toast(perm
+            ? 'Voice input is not available on this phone. You can type instead.'
+            : 'Microphone access is off. Allow it in Settings to use voice.');
+        return;
+      }
+    }
+    _textBeforeVoice = _input.text.trim();
+    setState(() => _listening = true);
+    try {
+      await _speech.listen(
+        onResult: (SpeechRecognitionResult r) {
+          final heard = r.recognizedWords;
+          final text = _textBeforeVoice.isEmpty ? heard : '$_textBeforeVoice $heard';
+          _input.value = TextEditingValue(
+            text: text,
+            selection: TextSelection.collapsed(offset: text.length),
+          );
+        },
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenFor: const Duration(seconds: 60),
+          pauseFor: const Duration(seconds: 4),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _listening = false);
+      _toast('Voice input is not available on this phone. You can type instead.');
+    }
+  }
+
   Future<void> _send([String? preset]) async {
+    if (_listening) {
+      _speech.stop();
+      _listening = false;
+    }
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty || _busy) return;
     _input.clear();
@@ -129,47 +216,110 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Future<void> _keySheet() async {
+    var prov = await AiService.provider();
     final ctrl = TextEditingController();
+    final modelCtrl = TextEditingController(text: await AiService.customModel(prov.id) ?? '');
+    var showAdvanced = modelCtrl.text.isNotEmpty;
+    String? error;
+    if (!mounted) return;
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: SysColors.bg,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('GEMINI API KEY', style: SysText.header),
-          const SizedBox(height: 10),
-          const Text('Stored only on this phone. Never synced or backed up.', style: TextStyle(color: SysColors.muted)),
-          const SizedBox(height: 14),
-          TextField(
-            controller: ctrl,
-            obscureText: true,
-            autocorrect: false,
-            style: SysText.body,
-            decoration: const InputDecoration(hintText: 'Paste your key'),
-          ),
-          const SizedBox(height: 14),
-          Row(children: [
-            if (_hasKey == true)
-              TextButton(
-                onPressed: () async {
-                  await AiService.removeKey();
-                  if (ctx.mounted) Navigator.pop(ctx, false);
-                },
-                child: const Text('Remove key', style: TextStyle(color: SysColors.warn)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('AI PROVIDER', style: SysText.header),
+            const SizedBox(height: 6),
+            const Text('Use a key from any provider below. Stored only on this phone. Never synced or backed up.',
+                style: TextStyle(color: SysColors.muted, height: 1.35)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final p in AiService.providers)
+                ChoiceChip(
+                  label: Text(p.isGemini ? 'Gemini (free)' : p.name),
+                  selected: p.id == prov.id,
+                  onSelected: (_) => setSheet(() {
+                    prov = p;
+                    error = null;
+                  }),
+                  selectedColor: SysColors.blue.withValues(alpha: 0.35),
+                  side: BorderSide(color: p.id == prov.id ? SysColors.cyan : SysColors.cyan.withValues(alpha: 0.3)),
+                  shape: _shape,
+                  labelStyle: TextStyle(
+                      color: p.id == prov.id ? Colors.white : SysColors.cyanSoft, fontWeight: FontWeight.w700),
+                  showCheckmark: false,
+                ),
+            ]),
+            const SizedBox(height: 10),
+            Text(prov.note, style: const TextStyle(color: SysColors.muted)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => launchUrl(Uri.parse(prov.keyUrl), mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: Text('Get a ${prov.name} key'),
+                style: TextButton.styleFrom(foregroundColor: SysColors.cyan, padding: EdgeInsets.zero),
               ),
-            const Spacer(),
-            FilledButton(
-              onPressed: () async {
-                if (ctrl.text.trim().length < 20) return;
-                await AiService.saveKey(ctrl.text);
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              },
-              style: _filled,
-              child: const Text('Save'),
             ),
+            TextField(
+              controller: ctrl,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: SysText.body,
+              onChanged: (v) {
+                final g = AiService.guessProvider(v);
+                if (g != null && g.id != prov.id) setSheet(() => prov = g);
+              },
+              decoration: InputDecoration(hintText: 'Paste your key (${prov.keyHint})', errorText: error),
+            ),
+            if (!showAdvanced)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => setSheet(() => showAdvanced = true),
+                  style: TextButton.styleFrom(foregroundColor: SysColors.muted, padding: EdgeInsets.zero),
+                  child: const Text('Advanced: choose a model'),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: modelCtrl,
+                autocorrect: false,
+                style: SysText.body,
+                decoration: InputDecoration(
+                    hintText: 'Model (optional, default ${prov.models.first})', helperText: 'Leave empty for the default.'),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Row(children: [
+              if (_hasKey == true)
+                TextButton(
+                  onPressed: () async {
+                    await AiService.removeKey();
+                    if (ctx.mounted) Navigator.pop(ctx, false);
+                  },
+                  child: const Text('Remove key', style: TextStyle(color: SysColors.warn)),
+                ),
+              const Spacer(),
+              FilledButton(
+                onPressed: () async {
+                  if (ctrl.text.trim().length < 20) {
+                    setSheet(() => error = 'That key looks too short.');
+                    return;
+                  }
+                  await AiService.saveKey(ctrl.text, providerId: prov.id, model: modelCtrl.text);
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                },
+                style: _filled,
+                child: const Text('Save'),
+              ),
+            ]),
           ]),
-        ]),
+        ),
       ),
     );
     if (saved != null) {
@@ -223,17 +373,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
       SysPanel(
         tag: 'ACTIVATE ASSISTANT',
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Describe a goal and the System drafts the quest for you. It uses Google Gemini, which has a free tier.',
+          const Text(
+              'Describe a goal and the System drafts the quest for you. Bring a key from any AI provider: Gemini, OpenAI, Claude, Groq, DeepSeek or OpenRouter.',
               style: TextStyle(color: SysColors.muted, height: 1.4)),
           const SizedBox(height: 16),
-          step('01', 'Open Google AI Studio and sign in with your Google account.'),
+          step('01', 'Recommended: Google Gemini is free. Open Google AI Studio and sign in.'),
           step('02', 'Tap "Create API key" and copy it.'),
-          step('03', 'Paste it here. It stays on this phone only.'),
+          step('03', 'Tap Add key, pick your provider and paste it. It stays on this phone only.'),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => launchUrl(Uri.parse(AiService.keyPageUrl), mode: LaunchMode.externalApplication),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Get a free key'),
+            label: const Text('Get a free Gemini key'),
             style: _outlined,
           ),
           const SizedBox(height: 8),
@@ -408,14 +559,30 @@ style: _outlined,
               style: SysText.body,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
-              decoration: const InputDecoration(
-                hintText: 'Describe your goal...',
+              decoration: InputDecoration(
+                hintText: _listening ? 'Listening... speak your goal' : 'Describe your goal or tap the mic',
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 filled: false,
               ),
             ),
+          ),
+          IconButton(
+            tooltip: _listening ? 'Stop listening' : 'Speak',
+            onPressed: _busy ? null : _toggleVoice,
+            icon: _listening
+                ? Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: SysColors.cyan.withValues(alpha: 0.18),
+                      border: Border.all(color: SysColors.cyan),
+                      boxShadow: [BoxShadow(color: SysColors.cyan.withValues(alpha: 0.6), blurRadius: 12)],
+                    ),
+                    child: const Icon(Icons.mic_rounded, color: SysColors.cyan, size: 20),
+                  )
+                : const Icon(Icons.mic_none_rounded, color: SysColors.cyan),
           ),
           IconButton(
             onPressed: _busy ? null : _send,

@@ -79,4 +79,30 @@ void main() {
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/ai_setup.png'));
     addTearDown(tester.view.reset);
   });
+
+  testWidgets('ai voice listening', (tester) async {
+    await shoot(
+        tester,
+        const AiChatScreen(debugListening: true, debugMessages: []),
+        'ai_voice');
+  });
+
+  testWidgets('ai provider sheet', (tester) async {
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('trackme_ai2');
+      Hive.init(dir.path);
+    });
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    await tester.pumpWidget(MaterialApp(
+        debugShowCheckedModeBanner: false, theme: theme(), home: const AiChatScreen(debugMessages: [])));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.byIcon(Icons.key_rounded));
+      await Future.delayed(const Duration(milliseconds: 500));
+    });
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/ai_keys.png'));
+    addTearDown(tester.view.reset);
+  });
 }

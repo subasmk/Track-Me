@@ -38,4 +38,39 @@ void main() {
     const body = '{"candidates":[{"content":{"parts":[{"text":"hmm","thought":true},{"text":"{\\"kind\\":\\"none\\"}"}]}}]}';
     expect(AiService.extractText(body), '{"kind":"none"}');
   });
+
+  group('providers', () {
+    const turns = [AiTurn(true, 'learn AWS')];
+    test('guess provider from key shape', () {
+      expect(AiService.guessProvider('sk-ant-api03-xxxx')!.id, 'anthropic');
+      expect(AiService.guessProvider('sk-or-v1-xxxx')!.id, 'openrouter');
+      expect(AiService.guessProvider('gsk_xxxx')!.id, 'groq');
+      expect(AiService.guessProvider('AIzaSyxxxx')!.id, 'gemini');
+      expect(AiService.guessProvider('sk-proj-xxxx'), isNull);
+    });
+    test('openai-compatible request', () {
+      final (uri, headers, body) = AiService.buildRequest(AiService.providerById('groq'), 'm1', 'k', turns);
+      expect(uri.toString(), 'https://api.groq.com/openai/v1/chat/completions');
+      expect(headers['Authorization'], 'Bearer k');
+      expect(body['model'], 'm1');
+      expect((body['messages'] as List).first['role'], 'system');
+      expect((body['messages'] as List).last['content'], 'learn AWS');
+    });
+    test('anthropic request', () {
+      final (uri, headers, body) = AiService.buildRequest(AiService.providerById('anthropic'), 'm2', 'k', turns);
+      expect(uri.host, 'api.anthropic.com');
+      expect(headers['x-api-key'], 'k');
+      expect(body['system'], AiService.systemPrompt);
+    });
+    test('gemini request', () {
+      final (uri, headers, _) = AiService.buildRequest(AiService.providerById('gemini'), 'g', 'k', turns);
+      expect(uri.path, contains('/models/g:generateContent'));
+      expect(headers['x-goog-api-key'], 'k');
+    });
+    test('extract text from openai and anthropic responses', () {
+      expect(AiService.extractText('{"choices":[{"message":{"role":"assistant","content":"{\\"kind\\":\\"none\\"}"}}]}'),
+          '{"kind":"none"}');
+      expect(AiService.extractText('{"content":[{"type":"text","text":"hi"}]}'), 'hi');
+    });
+  });
 }
